@@ -98,6 +98,7 @@ ompl::geometric::RRTstar::RRTstar(const base::SpaceInformationPtr &si)
                                         &RRTstar::getNumSamplingAttempts, "10:10:100000");
 
     addPlannerProgressProperty("iterations INTEGER", [this] { return numIterationsProperty(); });
+    addPlannerProgressProperty("motions INTEGER", [this] { return numMotionsProperty(); });
     addPlannerProgressProperty("best cost REAL", [this] { return bestCostProperty(); });
 }
 
@@ -1102,13 +1103,10 @@ bool ompl::geometric::RRTstar::sampleUniform(base::State *statePtr)
 void ompl::geometric::RRTstar::calculateRewiringLowerBounds()
 {
     const double dimDbl = static_cast<double>(si_->getStateDimension());
-    
+
     // k_rrt > 2^(d + 1) * e * (1 + 1 / d).  K-nearest RRT*
     k_rrt_ = rewireFactor_ * (std::pow(2, dimDbl + 1) * boost::math::constants::e<double>() * (1.0 + 1.0 / dimDbl));
 
     // r_rrt > (2*(1+1/d))^(1/d)*(measure/ballvolume)^(1/d)
-    // If we're not using the informed measure, prunedMeasure_ will be set to si_->getSpaceMeasure();
-    r_rrt_ =
-        rewireFactor_ * 
-        std::pow(2 * (1.0 + 1.0 / dimDbl) * (prunedMeasure_ / unitNBallMeasure(si_->getStateDimension())), 1.0 / dimDbl);
+    r_rrt_ = rewireFactor_ * std::pow(2 * (1.0 + 1.0 / dimDbl) * (si_->getSpaceMeasure() / unitNBallMeasure(si_->getStateDimension())), 1.0 / dimDbl);
 }

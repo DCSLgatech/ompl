@@ -150,6 +150,15 @@ namespace ompl
              * "admissible" means that the estimated cost is always less than the true optimal cost. */
             void setCostToGoHeuristic(const CostToGoHeuristic &costToGo);
 
+            /** \brief Check if this objective computes the gradient of the cost function. */
+            virtual bool hasAnalyticalGradient() const {return false;}
+
+            /** \brief Computes the gradient of the cost function with respect to the first argument. */
+            virtual std::vector<double> gradientwrts1(const State *s1, const State *s2) const;
+
+            /** \brief Computes the gradient of the cost function with respect to the second argument. */
+            virtual std::vector<double> gradientwrts2(const State *s1, const State *s2) const;
+
             /** \brief Check if this objective has a cost-to-go heuristic function. */
             bool hasCostToGoHeuristic() const;
 
@@ -243,6 +252,15 @@ namespace ompl
               cost values, where each individual value is scaled by
               its weight */
             Cost motionCost(const State *s1, const State *s2) const override;
+
+            /** \brief Check if this objective computes the gradient of the cost function. */
+            bool hasAnalyticalGradient() const override;
+
+            /** \brief Computes the gradient of the cost function with respect to the first argument. */
+            std::vector<double> gradientwrts1(const State *s1, const State *s2) const override;
+
+            /** \brief Computes the gradient of the cost function with respect to the second argument. */
+            std::vector<double> gradientwrts2(const State *s1, const State *s2) const override;
 
         protected:
             /** \brief Defines a pairing of an objective and its weight */

@@ -32,6 +32,8 @@ if (OMPL_BUILD_DEMOS)
   add_ompl_demo(demo_CForestCircleGridBenchmark CForestCircleGridBenchmark.cpp)
 
   add_ompl_demo(demo_Diagonal Diagonal.cpp)
+  add_ompl_demo(demo_test2D test2D.cpp)
+  add_ompl_demo(demo_ConvergenceTest ConvergenceTest.cpp)
 
   if(OMPL_HAVE_EIGEN3)
     add_ompl_demo(demo_VectorFieldConservative VFRRT/VectorFieldConservative.cpp)

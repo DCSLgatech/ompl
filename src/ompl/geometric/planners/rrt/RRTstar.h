@@ -496,6 +496,10 @@ namespace ompl
             {
                 return std::to_string(bestCost().value());
             }
+            std::string numMotionsProperty() const
+            {
+                return std::to_string(nn_->size());
+            }
         };
     }
 }

@@ -158,6 +158,42 @@ ompl::base::Cost ompl::base::OptimizationObjective::motionCostHeuristic(const St
     return identityCost();  // assumes that identity < all costs
 }
 
+std::vector<double> ompl::base::OptimizationObjective::gradientwrts1(const State *s1, const State *s2) const{
+    //OMPL_INFORM("Using numerical gradient");
+    double step=0.00001;
+    ompl::base::ScopedState<> v(si_->getStateSpace());
+    v=s1;
+    std::vector<double> res(v.reals().size(),0.0);
+    double c;
+    for(unsigned int i=0;i<res.size();++i){
+        v[i]+=step;
+        c=motionCost(v.get(),s2).value();
+        v[i]-=2*step;
+        c-=motionCost(v.get(),s2).value();
+        v[i]+=step;
+        res[i]=c/(2*step);
+    }
+    return res;
+}
+
+std::vector<double> ompl::base::OptimizationObjective::gradientwrts2(const State *s1, const State *s2) const{
+    //OMPL_INFORM("Using numerical gradient");
+    double step=0.00001;
+    ompl::base::ScopedState<> v(si_->getStateSpace());
+    v=s2;
+    std::vector<double> res(v.reals().size(),0.0);
+    double c;
+    for(unsigned int i=0;i<res.size();++i){
+        v[i]+=step;
+        c=motionCost(s1,v.get()).value();
+        v[i]-=2*step;
+        c-=motionCost(s1,v.get()).value();
+        v[i]+=step;
+        res[i]=c/(2*step);
+    }
+    return res;
+}
+
 const ompl::base::SpaceInformationPtr &ompl::base::OptimizationObjective::getSpaceInformation() const
 {
     return si_;
@@ -243,6 +279,70 @@ void ompl::base::MultiOptimizationObjective::lock()
 bool ompl::base::MultiOptimizationObjective::isLocked() const
 {
     return locked_;
+}
+
+bool ompl::base::MultiOptimizationObjective::hasAnalyticalGradient() const
+{
+    for (std::vector<Component>::const_iterator comp = components_.begin();
+         comp != components_.end();
+         ++comp)
+    {
+        if(!comp->objective->hasAnalyticalGradient())
+            return false;
+    }
+    return true;
+}
+
+std::vector<double> ompl::base::MultiOptimizationObjective::gradientwrts1(const State *s1, const State *s2) const{
+    std::vector<double> grad;
+    std::vector<double> lg;
+    std::vector<double>::iterator first1,first2,last1,d_first;
+    grad=components_.begin()->objective->gradientwrts1(s1,s2);
+    for(unsigned int i=0;i<grad.size();++i)
+        grad[i]*=components_.begin()->weight;
+    if(components_.size()>1){
+        for (std::vector<Component>::const_iterator comp = components_.begin()+1;
+             comp != components_.end();
+             ++comp)
+        {
+            lg=comp->objective->gradientwrts1(s1,s2);
+            first1=lg.begin();
+            last1=lg.end();
+            first2=grad.begin();
+            d_first=grad.begin();
+            while (first1 != last1) {
+                *d_first++ = comp->weight * (*first1++) + (*first2++);
+            }
+            //grad+=comp->objective->gradientwrts1(s1,s2);
+        }
+    }
+    return grad;
+}
+
+std::vector<double> ompl::base::MultiOptimizationObjective::gradientwrts2(const State *s1, const State *s2) const{
+    std::vector<double> grad;
+    std::vector<double> lg;
+    std::vector<double>::iterator first1,first2,last1,d_first;
+    grad=components_.begin()->objective->gradientwrts2(s1,s2);
+    for(unsigned int i=0;i<grad.size();++i)
+        grad[i]*=components_.begin()->weight;
+    if(components_.size()>1){
+        for (std::vector<Component>::const_iterator comp = components_.begin()+1;
+             comp != components_.end();
+             ++comp)
+        {
+            lg=comp->objective->gradientwrts2(s1,s2);
+            first1=lg.begin();
+            last1=lg.end();
+            first2=grad.begin();
+            d_first=grad.begin();
+            while (first1 != last1) {
+                *d_first++ = comp->weight * (*first1++) + (*first2++);
+            }
+            //grad+=comp->objective->gradientwrts2(s1,s2);
+        }
+    }
+    return grad;
 }
 
 ompl::base::Cost ompl::base::MultiOptimizationObjective::stateCost(const State *s) const

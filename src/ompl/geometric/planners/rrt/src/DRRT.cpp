@@ -34,7 +34,7 @@
 
 /* Author: Florian Hauer */
 
-#include "ompl/geometric/planners/rrt/RRTXstatic.h"
+#include "ompl/geometric/planners/rrt/DRRT.h"
 #include <algorithm>
 #include <boost/math/constants/constants.hpp>
 #include <limits>
@@ -47,8 +47,8 @@
 #include "ompl/tools/config/SelfConfig.h"
 #include "ompl/util/GeometricEquations.h"
 
-ompl::geometric::RRTXstatic::RRTXstatic(const base::SpaceInformationPtr &si)
-  : base::Planner(si, "RRTXstatic")
+ompl::geometric::DRRT::DRRT(const base::SpaceInformationPtr &si)
+  : base::Planner(si, "DRRT")
   , goalBias_(0.05)
   , maxDistance_(0.0)
   , useKNearest_(true)
@@ -61,48 +61,54 @@ ompl::geometric::RRTXstatic::RRTXstatic(const base::SpaceInformationPtr &si)
   , mc_(opt_, pdef_)
   , q_(mc_)
   , epsilonCost_(0.0)
-  , updateChildren_(true)
-  , variant_(0)
+  , variant_(BRANCH)
+  , deformationFrequency_(1.0)
+  , delayOptimizationUntilSolution_(false)
+  , rejectionVariant_(0)
   , alpha_(1.0)
   , useInformedSampling_(false)
   , useRejectionSampling_(false)
   , numSampleAttempts_(100u)
+  , gradientDelta_(0.1)
+  , maxNumItGradientDescent_(20)
 {
     specs_.approximateSolutions = true;
     specs_.optimizingPaths = true;
     specs_.canReportIntermediateSolutions = true;
 
-    Planner::declareParam<double>("range", this, &RRTXstatic::setRange, &RRTXstatic::getRange, "0.:1.:10000.");
-    Planner::declareParam<double>("goal_bias", this, &RRTXstatic::setGoalBias, &RRTXstatic::getGoalBias, "0.:.05:1.");
-    Planner::declareParam<double>("epsilon", this, &RRTXstatic::setEpsilon, &RRTXstatic::getEpsilon, "0.:.01:10.");
-    Planner::declareParam<double>("rewire_factor", this, &RRTXstatic::setRewireFactor, &RRTXstatic::getRewireFactor,
+    Planner::declareParam<double>("range", this, &DRRT::setRange, &DRRT::getRange, "0.:1.:10000.");
+    Planner::declareParam<double>("goal_bias", this, &DRRT::setGoalBias, &DRRT::getGoalBias, "0.:.05:1.");
+    Planner::declareParam<double>("epsilon", this, &DRRT::setEpsilon, &DRRT::getEpsilon, "0.:.01:10.");
+    Planner::declareParam<double>("rewire_factor", this, &DRRT::setRewireFactor, &DRRT::getRewireFactor,
                                   "1.0:0.01:2."
                                   "0");
-    Planner::declareParam<bool>("use_k_nearest", this, &RRTXstatic::setKNearest, &RRTXstatic::getKNearest, "0,1");
-    Planner::declareParam<bool>("update_children", this, &RRTXstatic::setUpdateChildren, &RRTXstatic::getUpdateChildren,
-                                "0,1");
-    Planner::declareParam<int>("rejection_variant", this, &RRTXstatic::setVariant, &RRTXstatic::getVariant, "0:3");
-    Planner::declareParam<double>("rejection_variant_alpha", this, &RRTXstatic::setAlpha, &RRTXstatic::getAlpha, "0.:"
-                                                                                                                 "1.");
-    Planner::declareParam<bool>("informed_sampling", this, &RRTXstatic::setInformedSampling,
-                                &RRTXstatic::getInformedSampling, "0,"
+    Planner::declareParam<bool>("use_k_nearest", this, &DRRT::setKNearest, &DRRT::getKNearest, "0,1");
+    Planner::declareParam<bool>("delay_optimization_until_solution", this, &DRRT::setDelayOptimizationUntilSolution, &DRRT::getDelayOptimizationUntilSolution, "0,1");
+    Planner::declareParam<int>("variant", this, &DRRT::setVariantInd, &DRRT::getVariantInd, "0,1,2");
+    Planner::declareParam<double>("deformation_frequency", this, &DRRT::setDeformationFrequency, &DRRT::getDeformationFrequency, "0.:.05:1.");
+    Planner::declareParam<int>("rejection_variant", this, &DRRT::setRejectionVariant, &DRRT::getRejectionVariant, "0:3");
+    Planner::declareParam<double>("rejection_alpha", this, &DRRT::setAlpha, &DRRT::getAlpha, "0.:1.");
+    Planner::declareParam<int>("max_num_it_gradient_descent", this, &DRRT::setMaxNumItGradientDescent, &DRRT::getMaxNumItGradientDescent, "0:1000");
+    Planner::declareParam<double>("gradient_delta", this, &DRRT::setGradientDelta, &DRRT::getGradientDelta, "0.:1.");
+    Planner::declareParam<bool>("informed_sampling", this, &DRRT::setInformedSampling,
+                                &DRRT::getInformedSampling, "0,"
                                                                   "1");
-    Planner::declareParam<bool>("sample_rejection", this, &RRTXstatic::setSampleRejection,
-                                &RRTXstatic::getSampleRejection, "0,1");
-    Planner::declareParam<bool>("number_sampling_attempts", this, &RRTXstatic::setNumSamplingAttempts,
-                                &RRTXstatic::getNumSamplingAttempts, "10:10:100000");
+    Planner::declareParam<bool>("sample_rejection", this, &DRRT::setSampleRejection,
+                                &DRRT::getSampleRejection, "0,1");
+    Planner::declareParam<bool>("number_sampling_attempts", this, &DRRT::setNumSamplingAttempts,
+                                &DRRT::getNumSamplingAttempts, "10:10:100000");
 
     addPlannerProgressProperty("iterations INTEGER", [this] { return numIterationsProperty(); });
     addPlannerProgressProperty("motions INTEGER", [this] { return numMotionsProperty(); });
     addPlannerProgressProperty("best cost REAL", [this] { return bestCostProperty(); });
 }
 
-ompl::geometric::RRTXstatic::~RRTXstatic()
+ompl::geometric::DRRT::~DRRT()
 {
     freeMemory();
 }
 
-void ompl::geometric::RRTXstatic::setup()
+void ompl::geometric::DRRT::setup()
 {
     Planner::setup();
     tools::SelfConfig sc(si_, getName());
@@ -151,7 +157,7 @@ void ompl::geometric::RRTXstatic::setup()
     bestCost_ = opt_->infiniteCost();
 }
 
-void ompl::geometric::RRTXstatic::clear()
+void ompl::geometric::DRRT::clear()
 {
     setup_ = false;
     Planner::clear();
@@ -163,12 +169,13 @@ void ompl::geometric::RRTXstatic::clear()
 
     lastGoalMotion_ = nullptr;
     goalMotions_.clear();
+    startMotions_.clear();
 
     iterations_ = 0;
     bestCost_ = base::Cost(std::numeric_limits<double>::quiet_NaN());
 }
 
-ompl::base::PlannerStatus ompl::geometric::RRTXstatic::solve(const base::PlannerTerminationCondition &ptc)
+ompl::base::PlannerStatus ompl::geometric::DRRT::solve(const base::PlannerTerminationCondition &ptc)
 {
     checkValidity();
     base::Goal *goal = pdef_->getGoal().get();
@@ -184,6 +191,7 @@ ompl::base::PlannerStatus ompl::geometric::RRTXstatic::solve(const base::Planner
             si_->copyState(motion->state, st);
             motion->cost = opt_->identityCost();
             nn_->add(motion);
+            startMotions_.push_back(motion);
         }
 
         // And assure that, if we're using an informed sampler, it's reset
@@ -227,9 +235,6 @@ ompl::base::PlannerStatus ompl::geometric::RRTXstatic::solve(const base::Planner
     Motion *motion;
     Motion *nmotion;
     Motion *nb;
-    Motion *min;
-    Motion *c;
-    bool feas;
 
     unsigned int rewireTest = 0;
     unsigned int statesGenerated = 0;
@@ -255,6 +260,8 @@ ompl::base::PlannerStatus ompl::geometric::RRTXstatic::solve(const base::Planner
 
         // Computes the RRG values for this iteration (number or radius of neighbors)
         calculateRRG();
+
+        resetQ();
 
         // sample random state (with goal biasing)
         // Goal samples are only sampled until maxSampleCount() goals are in the tree, to prohibit duplicate goal
@@ -303,7 +310,6 @@ ompl::base::PlannerStatus ompl::geometric::RRTXstatic::solve(const base::Planner
             for (auto it = motion->nbh.begin(); it != motion->nbh.end();)
             {
                 nb = it->first;
-                feas = it->second;
 
                 // Compute cost using nb as a parent
                 incCost = opt_->motionCost(nb->state, motion->state);
@@ -350,117 +356,37 @@ ompl::base::PlannerStatus ompl::geometric::RRTXstatic::solve(const base::Planner
             // add motion to the tree
             ++statesGenerated;
             nn_->add(motion);
-            if (updateChildren_)
-                motion->parent->children.push_back(motion);
+            motion->parent->children.push_back(motion);         
 
-            // add the new motion to the queue to propagate the changes
-            updateQueue(motion);
-
+            double distanceFromGoal;
             bool checkForSolution = false;
 
-            // Add the new motion to the goalMotion_ list, if it satisfies the goal
-            double distanceFromGoal;
+			// Add the new motion to the goalMotion_ list, if it satisfies the goal
             if (goal->isSatisfied(motion->state, &distanceFromGoal))
             {
                 goalMotions_.push_back(motion);
                 checkForSolution = true;
-            }
-
-            // Process the elements in the queue and rewire the tree until epsilon-optimality
-            while (!q_.empty())
-            {
-                // Get element to update
-                min = q_.top()->data;
-                // Remove element from the queue and NULL the handle so that we know it's not in the queue anymore
-                q_.pop();
-                min->handle = nullptr;
-
-                // Stop cost propagation if it is not in the relevant region
-                if (opt_->isCostBetterThan(bestCost_, mc_.costPlusHeuristic(min)))
-                    break;
-
-                // Try min as a parent to optimize each neighbor
-                for (auto it = min->nbh.begin(); it != min->nbh.end();)
-                {
-                    nb = it->first;
-                    feas = it->second;
-
-                    // Neighbor culling: removes neighbors farther than the neighbor radius
-                    if ((!useKNearest_ || min->nbh.size() > rrg_k_) && distanceFunction(min, nb) > rrg_r_)
-                    {
-                        it = min->nbh.erase(it);
-                        continue;
-                    }
-
-                    // Calculate cost of nb using min as a parent
-                    incCost = opt_->motionCost(min->state, nb->state);
-                    cost = opt_->combineCosts(min->cost, incCost);
-
-                    // If cost improvement is better than epsilon
-                    if (opt_->isCostBetterThan(opt_->combineCosts(cost, epsilonCost_), nb->cost))
-                    {
-                        if (nb->parent != min)
-                        {
-                            // changing parent, check feasibility
-                            if (!feas)
-                            {
-                                feas = si_->checkMotion(nb->state, min->state);
-                                if (!feas)
-                                {
-                                    // Remove unfeasible neighbor from the list of neighbors
-                                    it = min->nbh.erase(it);
-                                    continue;
-                                }
-                                else
-                                {
-                                    // mark than the motino has been checked as valid
-                                    it->second = true;
-                                }
-                            }
-                            if (updateChildren_)
-                            {
-                                // Remove this node from its parent list
-                                removeFromParent(nb);
-                                // add it as a children of min
-                                min->children.push_back(nb);
-                            }
-                            // Add this node to the new parent
-                            nb->parent = min;
-                            ++rewireTest;
-                        }
-                        nb->cost = cost;
-
-                        // Add to the queue for more improvements
-                        updateQueue(nb);
-
-                        checkForSolution = true;
-                    }
-                    ++it;
-                }
-                if (updateChildren_)
-                {
-                    // Propagatino of the cost to the children
-                    for (auto it = min->children.begin(), end = min->children.end(); it != end; ++it)
-                    {
-                        c = *it;
-                        incCost = opt_->motionCost(min->state, c->state);
-                        cost = opt_->combineCosts(min->cost, incCost);
-                        c->cost = cost;
-                        // Add to the queue for more improvements
-                        updateQueue(c);
-
-                        checkForSolution = true;
-                    }
+                if (opt_->isFinite(bestCost_) == false && delayOptimizationUntilSolution_){
+                    //add root of the tree in the queue
+                    for(unsigned int uu=0;uu<startMotions_.size();++uu)
+                        updateQueue(startMotions_[uu]);
+                    //optimize the tree
+                    checkForSolution=treeRewiring();
                 }
             }
 
-            // empty q and reset handles
-            while (!q_.empty())
-            {
-                q_.top()->data->handle = nullptr;
-                q_.pop();
+            if( motion->parent!=nullptr && motion->parent->parent!=nullptr &&
+                ( (variant_==BRANCH || variant_==TREE) && rng_.uniform01() < deformationFrequency_ && 
+                  (  !delayOptimizationUntilSolution_ || opt_->isFinite(bestCost_) || 
+                  goal->isSatisfied(motion->state, &distanceFromGoal) ) ) ){ //always minimize if the goal is reached
+                    gradientDescent(motion);
+            }else{
+			    updateQueue(motion);
             }
-            q_.clear();
+
+            if(!delayOptimizationUntilSolution_ || opt_->isFinite(bestCost_) || goal->isSatisfied(motion->state, &distanceFromGoal)){
+                checkForSolution=checkForSolution || treeRewiring();
+            }
 
             // Checking for solution or iterative improvement
             if (checkForSolution)
@@ -573,7 +499,245 @@ ompl::base::PlannerStatus ompl::geometric::RRTXstatic::solve(const base::Planner
     return base::PlannerStatus(addedSolution, approximate);
 }
 
-void ompl::geometric::RRTXstatic::updateQueue(Motion *x)
+void ompl::geometric::DRRT::resetQ(){
+    while (!q_.empty())
+            {
+                q_.top()->data->handle = nullptr;
+                q_.pop();
+            }
+            q_.clear();
+}
+
+bool ompl::geometric::DRRT::treeRewiring(){
+    bool checkForSolution=false;
+    MotionCompare mc(opt_,pdef_);
+    Motion *min,*nb,*c;
+    bool feas;
+    ompl::base::Cost incCost,cost;
+    while(!q_.empty()){
+                // Get element to update
+                min = q_.top()->data;
+                // Remove element from the queue and NULL the handle so that we know it's not in the queue anymore
+                q_.pop();
+                min->handle = nullptr;
+
+                // Stop cost propagation if it is not in the relevant region
+                if (opt_->isCostBetterThan(bestCost_, mc_.costPlusHeuristic(min)))
+                    break;
+
+                // Try min as a parent to optimize each neighbor
+                for (auto it = min->nbh.begin(); it != min->nbh.end();)
+                {
+		    nb=it->first;
+            feas=it->second;
+            if((!useKNearest_ || min->nbh.size()>rrg_k_) && distanceFunction(min,nb)>rrg_r_){
+                it=min->nbh.erase(it);
+                continue;
+            }
+            incCost = opt_->motionCost(min->state, nb->state);
+            cost = opt_->combineCosts(min->cost, incCost);
+		    if (opt_->isCostBetterThan(opt_->combineCosts(cost,epsilonCost_), nb->cost))
+		    {
+				if(nb->parent!=min){
+                    //changing parent, check feasibility
+                    if(!feas){
+                        feas=si_->checkMotion(nb->state, min->state);
+                        if(!feas){
+                            it=min->nbh.erase(it);
+                            continue;
+                        }else{
+                            it->second=true;
+                        }
+                    }
+                    // Remove this node from its parent list
+		            removeFromParent(nb);
+                    // add it as a children of min
+	                min->children.push_back(nb);
+			        // Add this node to the new parent
+			        nb->parent = min;
+                           // ++rewireTest;
+				}
+	            nb->cost = cost;
+
+	            // Add to the queue for more improvements
+				updateQueue(nb);
+
+	            checkForSolution = true;
+		    }
+            ++it;
+        }
+		// Propagatino of the cost to the children
+		for (auto it = min->children.begin(), end = min->children.end(); it != end; ++it)
+		{
+			c=*it;
+            incCost = opt_->motionCost(min->state, c->state);
+            cost = opt_->combineCosts(min->cost, incCost);
+		    c->cost = cost;
+			// Add to the queue for more improvements
+			updateQueue(c);
+
+	        checkForSolution = true;
+		}
+	}
+    return checkForSolution;
+}
+
+void ompl::geometric::DRRT::gradientDescent(Motion *x){
+    bool optim=true;
+    Motion *xi,*xim,*xip,*nb;
+    ompl::base::ScopedState<> Xi(si_->getStateSpace());
+    std::vector<double> grad1,grad2;
+    double delta=gradientDelta_/0.9; //TODO make parameter or do line search to minize cost along gradient
+    std::vector<Motion*> branch;//branch with extremities
+    xi=x;
+    unsigned int lit=0;
+    //Create branch
+    while(xi!=nullptr){
+        branch.insert(branch.begin(),xi);
+        xi=xi->parent;                   
+    }
+    std::vector<bool> deleted(branch.size(),false);
+    std::vector<bool> cantmove(branch.size(),false);
+    std::vector<ompl::base::ScopedState<> > prevStates(branch.size(),Xi); //TODO maybe? keep vectors as class filds to prevent reallocating memory
+    //optimize branch
+    while(optim && lit<maxNumItGradientDescent_){//TODO make max it parameter or termination condition parameter
+	delta*=0.9;
+        ++lit;
+        optim=false;
+        for(unsigned int bi=1;bi<branch.size()-1;++bi){
+            if(cantmove[bi])
+                continue;
+            xi=branch[bi];
+            xim=branch[bi-1];
+            xip=branch[bi+1];
+            Xi=xi->state;
+            //calculate Xi new position
+            grad1=opt_->gradientwrts2(xim->state,xi->state);
+            if(variant_!=TREE){
+                grad2=opt_->gradientwrts1(xi->state,xip->state);
+                for(unsigned int i=0;i<grad1.size();++i){
+                    grad1[i]+=grad2[i];
+                }
+            }else{
+		for(unsigned int i=0;i<grad1.size();++i){
+			grad1[i]*=(xi->children.size());//+1?
+		}
+                for(unsigned int ic=0;ic<xi->children.size();++ic){
+                    grad2=opt_->gradientwrts1(xi->state,xi->children[ic]->state);
+                    for(unsigned int i=0;i<grad1.size();++i){
+                        grad1[i]+=grad2[i];
+                    }
+                }
+            }
+	    if(true){ //////////////////////////////IMPLEMENTATION IN PROGRESS
+		    //bactracking line search
+		    // https://www.cs.cmu.edu/~ggordon/10725-F12/scribes/10725_Lecture5.pdf
+		    double currentCost=0;
+		    double gradientNorm2=0;
+		    double cost=0;
+		    double t=1;
+		    double beta=0.8;
+		    ompl::base::ScopedState<> Xi_temp(si_->getStateSpace());
+                    for(unsigned int i=0;i<grad1.size();++i){
+                        Xi_temp[i]=Xi[i]-t*grad1[i];
+			gradientNorm2+=grad1[i]*grad1[i];
+                    }
+		    if(variant_!=TREE){
+			currentCost=opt_->motionCost(branch[bi-1]->state, branch[bi]->state).value() + opt_->motionCost(branch[bi]->state, branch[bi+1]->state).value();
+			cost=opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value() + opt_->motionCost(Xi_temp.get(), branch[bi+1]->state).value();
+		    }else{
+			currentCost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, branch[bi]->state).value();
+			cost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value();
+			for(unsigned int ic=0;ic<xi->children.size();++ic){
+				currentCost+=opt_->motionCost(branch[bi]->state, xi->children[ic]->state).value();
+				cost+=opt_->motionCost(Xi_temp.get(), xi->children[ic]->state).value();
+			}
+		    }
+		    while(cost>currentCost-0.5*t*gradientNorm2 && t>0.000001){
+			    t*=beta;
+		            for(unsigned int i=0;i<grad1.size();++i){
+		                Xi_temp[i]=Xi[i]-t*grad1[i];
+		            }
+			    if(variant_!=TREE){
+				cost=opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value() + opt_->motionCost(Xi_temp.get(), branch[bi+1]->state).value();
+			    }else{
+				cost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value();
+				for(unsigned int ic=0;ic<xi->children.size();++ic){
+					cost+=opt_->motionCost(Xi_temp.get(), xi->children[ic]->state).value();
+				}
+			    }
+		    }	
+		    if(t<0.000001){
+		        cantmove[bi]=true;
+		        continue;
+		    }else{
+		            for(unsigned int i=0;i<grad1.size();++i){
+		                Xi[i]=Xi_temp[i];
+		            }
+		    }	    
+	    }else{
+                    for(unsigned int i=0;i<grad1.size();++i){
+                        Xi[i]-=delta*grad1[i];
+                    }
+	    }
+            //check feasiblity
+            if(!si_->checkMotion(xim->state, Xi.get())){
+                cantmove[bi]=true;
+                continue;
+            }
+            for(unsigned int i=0;i<xi->children.size();++i){
+                if(!si_->checkMotion(Xi.get(),xi->children[i]->state)){
+                    cantmove[bi]=true;
+                    break;
+                }
+            }
+            if(cantmove[bi])
+                continue;
+            //update xi position and the nn datastructure
+            if(!deleted[bi]){
+                prevStates[bi]=xi->state;
+                nn_->remove(xi);
+                deleted[bi]=true;
+            }
+            si_->copyState(xi->state,Xi.get());
+            optim=true;
+        }
+    }
+    //Add branch back in nn
+    for(unsigned int bi=1;bi<branch.size()-1;++bi){
+        if(deleted[bi]){
+            //Recompute neighbors if move > rrg_r/2 maybe
+            if(si_->distance(prevStates[bi].get(),branch[bi]->state)>0.5*rrg_r_){
+                branch[bi]->nbh.clear();
+                getNeighbors(branch[bi]);
+                for (std::vector<std::pair<Motion*,bool> >::iterator it=branch[bi]->nbh.begin();it!=branch[bi]->nbh.end();)
+                {
+                    nb=it->first;
+                    nb->nbh.push_back(std::make_pair(branch[bi],false));
+                    ++it;
+                }
+            }else{
+                //Invalidate motions
+                for(unsigned nbi=0;nbi<branch[bi]->nbh.size();++nbi){
+                    branch[bi]->nbh[nbi].second=false;
+                }
+            }
+            nn_->add(branch[bi]);
+        }                        
+    }
+    //recompute costs in branch
+    ompl::base::Cost incCost,cost;
+    for(unsigned int bi=1;bi<branch.size();++bi){
+        incCost = opt_->motionCost(branch[bi-1]->state, branch[bi]->state);
+        cost = opt_->combineCosts(branch[bi-1]->cost, incCost);
+        if(!opt_->isCostEquivalentTo(cost,branch[bi]->cost)){
+            branch[bi]->cost=cost;
+            updateQueue(branch[bi]);
+        }
+    }
+}
+
+void ompl::geometric::DRRT::updateQueue(Motion *x)
 {
     // If x->handle is not NULL, x is already in the queue and needs to be update, otherwise it is inserted
     if (x->handle != nullptr)
@@ -586,7 +750,7 @@ void ompl::geometric::RRTXstatic::updateQueue(Motion *x)
     }
 }
 
-void ompl::geometric::RRTXstatic::removeFromParent(Motion *m)
+void ompl::geometric::DRRT::removeFromParent(Motion *m)
 {
     for (auto it = m->parent->children.begin(); it != m->parent->children.end(); ++it)
     {
@@ -598,7 +762,7 @@ void ompl::geometric::RRTXstatic::removeFromParent(Motion *m)
     }
 }
 
-void ompl::geometric::RRTXstatic::calculateRRG()
+void ompl::geometric::DRRT::calculateRRG()
 {
     double cardDbl = static_cast<double>(nn_->size() + 1u);
     rrg_k_ = std::ceil(k_rrt_ * log(cardDbl));
@@ -606,7 +770,7 @@ void ompl::geometric::RRTXstatic::calculateRRG()
                       r_rrt_ * std::pow(log(cardDbl) / cardDbl, 1 / static_cast<double>(si_->getStateDimension())));
 }
 
-void ompl::geometric::RRTXstatic::getNeighbors(Motion *motion) const
+void ompl::geometric::DRRT::getNeighbors(Motion *motion) const
 {
     if (motion->nbh.size() > 0)
     {
@@ -629,9 +793,9 @@ void ompl::geometric::RRTXstatic::getNeighbors(Motion *motion) const
                    [](Motion *m) { return std::pair<Motion *, bool>(m, false); });
 }
 
-bool ompl::geometric::RRTXstatic::includeVertex(const Motion *x) const
+bool ompl::geometric::DRRT::includeVertex(const Motion *x) const
 {
-    switch (variant_)
+    switch (rejectionVariant_)
     {
         case 1:
             return opt_->isCostBetterThan(mc_.alphaCostPlusHeuristic(x, alpha_), opt_->infiniteCost());  // Always true?
@@ -644,7 +808,7 @@ bool ompl::geometric::RRTXstatic::includeVertex(const Motion *x) const
     }
 }
 
-void ompl::geometric::RRTXstatic::freeMemory()
+void ompl::geometric::DRRT::freeMemory()
 {
     if (nn_)
     {
@@ -659,7 +823,7 @@ void ompl::geometric::RRTXstatic::freeMemory()
     }
 }
 
-void ompl::geometric::RRTXstatic::getPlannerData(base::PlannerData &data) const
+void ompl::geometric::DRRT::getPlannerData(base::PlannerData &data) const
 {
     Planner::getPlannerData(data);
 
@@ -679,7 +843,7 @@ void ompl::geometric::RRTXstatic::getPlannerData(base::PlannerData &data) const
     }
 }
 
-void ompl::geometric::RRTXstatic::setInformedSampling(bool informedSampling)
+void ompl::geometric::DRRT::setInformedSampling(bool informedSampling)
 {
     if (static_cast<bool>(opt_) == true)
     {
@@ -715,7 +879,7 @@ void ompl::geometric::RRTXstatic::setInformedSampling(bool informedSampling)
     }
 }
 
-void ompl::geometric::RRTXstatic::setSampleRejection(const bool reject)
+void ompl::geometric::DRRT::setSampleRejection(const bool reject)
 {
     if (static_cast<bool>(opt_) == true)
     {
@@ -751,7 +915,7 @@ void ompl::geometric::RRTXstatic::setSampleRejection(const bool reject)
     }
 }
 
-void ompl::geometric::RRTXstatic::allocSampler()
+void ompl::geometric::DRRT::allocSampler()
 {
     // Allocate the appropriate type of sampler.
     if (useInformedSampling_)
@@ -773,7 +937,7 @@ void ompl::geometric::RRTXstatic::allocSampler()
     }
 }
 
-bool ompl::geometric::RRTXstatic::sampleUniform(base::State *statePtr)
+bool ompl::geometric::DRRT::sampleUniform(base::State *statePtr)
 {
     // Use the appropriate sampler
     if (useInformedSampling_ || useRejectionSampling_)
@@ -794,7 +958,7 @@ bool ompl::geometric::RRTXstatic::sampleUniform(base::State *statePtr)
     }
 }
 
-void ompl::geometric::RRTXstatic::calculateRewiringLowerBounds()
+void ompl::geometric::DRRT::calculateRewiringLowerBounds()
 {
     const double dimDbl = static_cast<double>(si_->getStateDimension());
 
