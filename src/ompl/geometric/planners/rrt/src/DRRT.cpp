@@ -804,8 +804,25 @@ bool ompl::geometric::DRRT::includeVertex(const Motion *x) const
         case 3:
             return opt_->isCostBetterThan(mc_.alphaCostPlusHeuristic(x, alpha_), bestCost_);
         default:  // no rejection
-            return true;
+            return !opt_->isCostBetterThan(bestCost_, solutionHeuristic(x));
     }
+}
+
+ompl::base::Cost ompl::geometric::DRRT::solutionHeuristic(const Motion *motion) const
+{
+    base::Cost costToCome;
+    // Start with infinite cost
+    costToCome = opt_->infiniteCost();
+
+    // Find the min from each start
+    for (auto startMotion : startMotions_)
+    {
+        costToCome = opt_->betterCost(costToCome, opt_->motionCost(startMotion->state,
+                                      motion->state));  // lower-bounding cost from the start to the state
+    }
+    const base::Cost costToGo =
+        opt_->costToGo(motion->state, pdef_->getGoal().get());  // lower-bounding cost from the state to the goal
+    return opt_->combineCosts(costToCome, costToGo);            // add the two costs
 }
 
 void ompl::geometric::DRRT::freeMemory()

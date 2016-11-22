@@ -419,6 +419,9 @@ namespace ompl
             /** \brief Test if the vertex should be included according to the variant in use */
             bool includeVertex(const Motion *x) const;
 
+            /** \brief Sum of heuristic from start to motion + motion to goal */
+            ompl::base::Cost solutionHeuristic(const Motion *motion) const;
+
             /** \brief State sampler */
             base::StateSamplerPtr sampler_;
 

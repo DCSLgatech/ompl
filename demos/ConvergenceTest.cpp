@@ -77,16 +77,22 @@ int main(int argc, char **argv)
     int maxDim = atoi(argv[1]);
     int nbRun  = atoi(argv[2]);
     double maxTime=1000.0;
-    double threshold=1.03;
+    double threshold=1.025;
 
     ompl::msg::noOutputHandler();
 
-    for(int p=0;p<3;++p){
+    for(int p=0;p<9;++p){
 
         switch(p){
             case 0 : std::cout << "RRT*" << std::endl;break;
             case 1 : std::cout << "RRT#" << std::endl;break;
             case 2 : std::cout << "DRRT" << std::endl;break;
+            case 3 : std::cout << "RRT*RS" << std::endl;break;
+            case 4 : std::cout << "RRT#RS" << std::endl;break;
+            case 5 : std::cout << "DRRTRS" << std::endl;break;
+            case 6 : std::cout << "RRT*IS" << std::endl;break;
+            case 7 : std::cout << "RRT#IS" << std::endl;break;
+            case 8 : std::cout << "DRRTIS" << std::endl;break;
         }
 
         for(int dim=1;dim<=maxDim;++dim){
@@ -127,13 +133,36 @@ int main(int argc, char **argv)
                 switch(p){
                     case 0 : planner=ompl::base::PlannerPtr(new ompl::geometric::RRTstar(ss.getSpaceInformation()));
                              planner->as<ompl::geometric::RRTstar>()->setRange(range);
-                             planner->as<ompl::geometric::RRTstar>()->setDelayCC(false);
                              break;
                     case 1 : planner=ompl::base::PlannerPtr(new ompl::geometric::RRTsharp(ss.getSpaceInformation()));
                              planner->as<ompl::geometric::RRTsharp>()->setRange(range);
                              break;
                     case 2 : planner=ompl::base::PlannerPtr(new ompl::geometric::DRRT(ss.getSpaceInformation()));
                              planner->as<ompl::geometric::DRRT>()->setRange(range);
+                             break;
+                    case 3 : planner=ompl::base::PlannerPtr(new ompl::geometric::RRTstar(ss.getSpaceInformation()));
+                             planner->as<ompl::geometric::RRTstar>()->setRange(range);
+                             planner->as<ompl::geometric::RRTstar>()->setSampleRejection(true);
+                             break;
+                    case 4 : planner=ompl::base::PlannerPtr(new ompl::geometric::RRTsharp(ss.getSpaceInformation()));
+                             planner->as<ompl::geometric::RRTsharp>()->setRange(range);
+                             planner->as<ompl::geometric::RRTsharp>()->setSampleRejection(true);
+                             break;
+                    case 5 : planner=ompl::base::PlannerPtr(new ompl::geometric::DRRT(ss.getSpaceInformation()));
+                             planner->as<ompl::geometric::DRRT>()->setRange(range);
+                             planner->as<ompl::geometric::DRRT>()->setSampleRejection(true);
+                             break;
+                    case 6 : planner=ompl::base::PlannerPtr(new ompl::geometric::RRTstar(ss.getSpaceInformation()));
+                             planner->as<ompl::geometric::RRTstar>()->setRange(range);
+                             planner->as<ompl::geometric::RRTstar>()->setInformedSampling(true);
+                             break;
+                    case 7 : planner=ompl::base::PlannerPtr(new ompl::geometric::RRTsharp(ss.getSpaceInformation()));
+                             planner->as<ompl::geometric::RRTsharp>()->setRange(range);
+                             planner->as<ompl::geometric::RRTsharp>()->setInformedSampling(true);
+                             break;
+                    case 8 : planner=ompl::base::PlannerPtr(new ompl::geometric::DRRT(ss.getSpaceInformation()));
+                             planner->as<ompl::geometric::DRRT>()->setRange(range);
+                             planner->as<ompl::geometric::DRRT>()->setInformedSampling(true);
                              break;
                 }
 
@@ -149,9 +178,21 @@ int main(int argc, char **argv)
                 switch(p){
                     case 0 : iterations.push_back(planner->as<ompl::geometric::RRTstar>()->numIterations());
                              break;
-                    case 1 : iterations.push_back(planner->as<ompl::geometric::RRTsharp>()->numIterations());planner=ompl::base::PlannerPtr(new ompl::geometric::RRTsharp(ss.getSpaceInformation()));
+                    case 1 : iterations.push_back(planner->as<ompl::geometric::RRTsharp>()->numIterations());
                              break;
-                    case 2 : iterations.push_back(planner->as<ompl::geometric::DRRT>()->numIterations());planner=ompl::base::PlannerPtr(new ompl::geometric::DRRT(ss.getSpaceInformation()));
+                    case 2 : iterations.push_back(planner->as<ompl::geometric::DRRT>()->numIterations());
+                             break;
+                    case 3 : iterations.push_back(planner->as<ompl::geometric::RRTstar>()->numIterations());
+                             break;
+                    case 4 : iterations.push_back(planner->as<ompl::geometric::RRTsharp>()->numIterations());
+                             break;
+                    case 5 : iterations.push_back(planner->as<ompl::geometric::DRRT>()->numIterations());
+                             break;
+                    case 6 : iterations.push_back(planner->as<ompl::geometric::RRTstar>()->numIterations());
+                             break;
+                    case 7 : iterations.push_back(planner->as<ompl::geometric::RRTsharp>()->numIterations());
+                             break;
+                    case 8 : iterations.push_back(planner->as<ompl::geometric::DRRT>()->numIterations());
                              break;
                 }
             }
