@@ -47,6 +47,8 @@
 #include "ompl/tools/config/SelfConfig.h"
 #include "ompl/util/GeometricEquations.h"
 
+#include <fstream>      // std::ofstream
+
 ompl::geometric::RRTXstatic::RRTXstatic(const base::SpaceInformationPtr &si)
   : base::Planner(si, "RRTXstatic")
   , goalBias_(0.05)
@@ -149,6 +151,20 @@ void ompl::geometric::RRTXstatic::setup()
 
     // Set the bestCost_ and prunedCost_ as infinite
     bestCost_ = opt_->infiniteCost();
+
+    //load initial guess
+    std::string name("initial_guess.csv");
+    std::ifstream file(name);
+    if(file){
+	//add start or clear start states from pis_
+
+	//add rest of the trajectory
+
+	//update algorithm variables
+
+
+	file.close();
+    }
 }
 
 void ompl::geometric::RRTXstatic::clear()

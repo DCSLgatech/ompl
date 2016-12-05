@@ -423,6 +423,37 @@ each planner."""
     else:
         plt.clf()
 
+def plotProgressAttributeAllRunsPerPlanner(cur, planners, attribute, pp):
+    """Plot data for a single planner progress attribute. Will create an
+average time-plot with error bars of the attribute over all runs for
+each planner."""
+
+    import numpy.ma as ma
+
+    plannerNames = []
+    for planner in planners:
+        plt.clf()
+        ax = plt.gca()
+        ax.set_xlabel('time (s)')
+        ax.set_ylabel(attribute.replace('_',' '))
+        cur.execute("""SELECT count(progress.%s) FROM progress INNER JOIN runs
+            ON progress.runid = runs.id AND runs.plannerid=%s
+            AND progress.%s IS NOT NULL""" \
+            % (attribute, planner[0], attribute))
+        if cur.fetchone()[0] > 0:
+            plannerNames.append(planner[1])
+            ax.set_xlabel("time (s) for %s" %(planner[1]))
+            cur.execute("""SELECT DISTINCT progress.runid FROM progress INNER JOIN runs
+            WHERE progress.runid=runs.id AND runs.plannerid=?""", (planner[0],))
+            runids = [t[0] for t in cur.fetchall()]
+            for r in runids:
+                # Select data for given run
+                cur.execute('SELECT time, %s FROM progress WHERE runid = %s ORDER BY time' % (attribute,r))
+                (time, data) = zip(*(cur.fetchall()))
+                plt.plot(time,data)
+        plt.show()
+        pp.savefig(plt.gcf())
+
 def plotStatistics(dbname, fname):
     """Create a PDF file with box plots for all attributes."""
     print("Generating plots...")
@@ -447,6 +478,7 @@ def plotStatistics(dbname, fname):
     for col in colInfo:
         plotProgressAttribute(c, planners, col[1])
         pp.savefig(plt.gcf())
+        plotProgressAttributeAllRunsPerPlanner(c, planners, col[1],pp)
     plt.clf()
 
     pagey = 0.9
