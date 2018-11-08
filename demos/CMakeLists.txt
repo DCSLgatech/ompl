@@ -32,6 +32,8 @@ if (OMPL_BUILD_DEMOS)
   add_ompl_demo(demo_CForestCircleGridBenchmark CForestCircleGridBenchmark.cpp)
 
   add_ompl_demo(demo_Diagonal Diagonal.cpp)
+  add_ompl_demo(demo_TestSpace TestSpaceDemo.cpp)
+  add_ompl_demo(demo_BoundedAccelVel BoundedAccelVelocityDemo.cpp)
   add_ompl_demo(demo_test2D test2D.cpp)
   add_ompl_demo(demo_ConvergenceTest ConvergenceTest.cpp)
 

@@ -24,7 +24,8 @@ install_common_dependencies()
         sudo apt-get -y install software-properties-common
         sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
         sudo apt-get -y update
-        sudo apt-get -y install g++-5 cmake libboost1.55-all-dev libeigen3-dev libode-dev
+        #sudo apt-get -y install g++-5 cmake libboost1.55-all-dev libeigen3-dev libode-dev
+        sudo apt-get -y install g++-5 cmake libeigen3-dev libode-dev
         export CXX=g++-5
     fi
     export MAKEFLAGS="-j `nproc`"
@@ -69,18 +70,18 @@ install_app_dependencies()
 
 install_ompl()
 {
-    if [ -z $2 ]; then
-        OMPL="ompl"
-    else
-        OMPL="omplapp"
-    fi
-    wget -O - https://bitbucket.org/ompl/ompl/downloads/$OMPL-@OMPL_VERSION@-Source.tar.gz | tar zxf -
-    cd $OMPL-@OMPL_VERSION@-Source
+    #if [ -z $2 ]; then
+    #    OMPL="ompl"
+    #else
+    #    OMPL="omplapp"
+    #fi
+    #wget -O - https://bitbucket.org/ompl/ompl/downloads/$OMPL-@OMPL_VERSION@-Source.tar.gz | tar zxf -
+    cd /home/florian/workspace/omplapp
     mkdir -p build/Release
     cd build/Release
     cmake ../..
     if [ ! -z $1 ]; then
-        make update_bindings
+        make update_bindings -j 1
     fi
     make
     sudo make install

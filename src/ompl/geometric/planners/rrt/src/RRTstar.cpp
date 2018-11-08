@@ -179,6 +179,7 @@ void ompl::geometric::RRTstar::clear()
 
 ompl::base::PlannerStatus ompl::geometric::RRTstar::solve(const base::PlannerTerminationCondition &ptc)
 {
+    OMPL_WARN("BONZAI");
     checkValidity();
     base::Goal *goal = pdef_->getGoal().get();
     base::GoalSampleableRegion *goal_s = dynamic_cast<base::GoalSampleableRegion *>(goal);

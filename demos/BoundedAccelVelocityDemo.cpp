@@ -35,12 +35,11 @@
 /* Author: Florian Hauer */
 
 #include <ompl/base/objectives/PathLengthOptimizationObjective.h>
-#include <ompl/base/spaces/RealVectorStateSpace.h>
+#include <ompl/base/spaces/BoundedAccelSpeedStateSpace.h>
 #include <ompl/geometric/planners/rrt/RRTXstatic.h>
 #include <ompl/geometric/planners/rrt/RRTsharp.h>
 #include <ompl/geometric/planners/rrt/RRTstar.h>
 #include <ompl/geometric/planners/rrt/DRRT.h>
-#include <ompl/geometric/planners/bitstar/BITstar.h>
 #include <ompl/tools/benchmark/Benchmark.h>
 
 #include <boost/format.hpp>
@@ -75,12 +74,13 @@ int main(int argc, char **argv)
         std::cout << "Usage: " << argv[0] << " dimensionOfTheProblem" << std::endl;
         exit(0);
     }
-    int dim = atoi(argv[1]);
+    int dim = 2;
 
-    auto space(std::make_shared<ompl::base::RealVectorStateSpace>(dim));
+
+    auto space(std::make_shared<ompl::base::BoundedAccelSpeedStateSpace>(dim,10,10));
     ompl::geometric::SimpleSetup ss(space);
     const ompl::base::SpaceInformationPtr &si = ss.getSpaceInformation();
-    space->setBounds(-1, 1);
+    space->setBounds(-100, 100);
 
     ss.setStateValidityChecker(std::make_shared<ValidityChecker>(si));
 
@@ -93,13 +93,24 @@ int main(int argc, char **argv)
 
     ss.setStartAndGoalStates(start, goal);
 
+    auto sstart = start.get();
+
+    double time = space->distance(sstart,sstart);
+
+    std::cout << "start start distance " << time << std::endl;
+
+    time = space->distance(goal.get(),goal.get());
+
+    std::cout << "goal goal distance " << time << std::endl;
+
+
     // by default, use the Benchmark class
     double runtime_limit = 5, memory_limit = 1024;
     int run_count = 10;
     ompl::tools::Benchmark::Request request(runtime_limit, memory_limit, run_count, 0.05, true, true, false, false);
     ompl::tools::Benchmark b(ss, "Diagonal");
 
-    double range = 0.05 * sqrt(dim);
+    double range = 0.1 * sqrt(dim);
 
     auto lengthObj(std::make_shared<ompl::base::PathLengthOptimizationObjective>(si));
     ompl::base::OptimizationObjectivePtr oop((0.5 / sqrt(dim)) * lengthObj);
@@ -108,44 +119,30 @@ int main(int argc, char **argv)
 
     bool knn = true;
 
-//    auto rrtstar(std::make_shared<ompl::geometric::RRTstar>(si));
-//    rrtstar->setName("RRT*");
-//    rrtstar->setDelayCC(false);
-//    rrtstar->setFocusSearch(false);
-//    rrtstar->setRange(range);
-//    rrtstar->setKNearest(knn);
-//    b.addPlanner(rrtstar);
+    auto rrtstar(std::make_shared<ompl::geometric::RRTstar>(si));
+    rrtstar->setName("RRT*");
+    rrtstar->setDelayCC(false);
+    rrtstar->setFocusSearch(false);
+    rrtstar->setRange(range);
+    rrtstar->setKNearest(knn);
+    b.addPlanner(rrtstar);
     auto rrtsh(std::make_shared<ompl::geometric::RRTsharp>(si));
     rrtsh->setRange(range);
     rrtsh->setKNearest(knn);
     b.addPlanner(rrtsh);
-//    auto rrtX2(std::make_shared<ompl::geometric::RRTXstatic>(si));
-//    rrtX2->setName("RRTX0.01");
-//    rrtX2->setEpsilon(0.01);
-//    rrtX2->setRange(range);
-//    rrtX2->setKNearest(knn);
-//    b.addPlanner(rrtX2);
+    auto rrtX2(std::make_shared<ompl::geometric::RRTXstatic>(si));
+    rrtX2->setName("RRTX0.01");
+    rrtX2->setEpsilon(0.01);
+    rrtX2->setRange(range);
+    rrtX2->setKNearest(knn);
+    b.addPlanner(rrtX2);
     auto drrtt(std::make_shared<ompl::geometric::DRRT>(si));
     drrtt->setName("DRRT0t");
     drrtt->setRange(range);
     drrtt->setVariant(ompl::geometric::DRRT::Variant::TREE);
     drrtt->setKNearest(knn);
     b.addPlanner(drrtt);
-    auto drrttsn(std::make_shared<ompl::geometric::DRRT>(si));
-    drrttsn->setName("drrttsn");
-    drrttsn->setRange(range);
-    drrttsn->setVariant(ompl::geometric::DRRT::Variant::TREE);
-    drrttsn->setKNearest(knn);
-    drrttsn->setSingleNodeUpdate(true);
-    b.addPlanner(drrttsn);
-    auto bitstar(std::make_shared<ompl::geometric::BITstar>(ss.getSpaceInformation()));
-//    bitstar->setName("DRRT_SN");
-//    bitstar->setRange(range);
-//    bitstar->setVariant(ompl::geometric::DRRT::Variant::TREE);
-//    drrttsn2->setKNearest(knn);
-//    bitstar->setSingleNodeUpdate(true);
-//    bitstar->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(false);
-    b.addPlanner(bitstar);
+
     b.benchmark(request);
     b.saveResultsToFile(boost::str(boost::format("Diagonal.log")).c_str());
 

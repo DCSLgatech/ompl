@@ -218,8 +218,8 @@ def readBenchmarkLog(dbname, filenames, moveitformat):
                 settings = settings + logfile.readline() + ';'
 
             # find planner id
-            c.execute('SELECT id FROM plannerConfigs WHERE (name=? AND settings=?)',
-                (plannerName, settings,))
+            c.execute('SELECT id FROM plannerConfigs WHERE (name=?)',
+                (plannerName,))
             p = c.fetchone()
             if p==None:
                 c.execute('INSERT INTO plannerConfigs VALUES (?,?,?)',
@@ -373,19 +373,26 @@ def plotAttribute(cur, planners, attribute, typename):
             ax.text(x, .95*maxy, str(nanCounts[i]), horizontalalignment='center', size='small')
     plt.show()
 
-def plotProgressAttribute(cur, planners, attribute):
+def plotProgressAttribute(cur, planners, attribute, meanCovarianceAnalysis):
     """Plot data for a single planner progress attribute. Will create an
 average time-plot with error bars of the attribute over all runs for
 each planner."""
 
     import numpy.ma as ma
 
+    if meanCovarianceAnalysis:
+        analysis = "mean/covariance"
+    else:
+        analysis = "10/50/90 percentiles"
+
     plt.clf()
     ax = plt.gca()
     ax.set_xlabel('time (s)')
-    ax.set_ylabel(attribute.replace('_',' '))
+    ax.set_ylabel(attribute.replace('_',' ') + " (" + analysis +")")
     plannerNames = []
     for planner in planners:
+        if planner[1] == "RRT*":
+            continue;
         cur.execute("""SELECT count(progress.%s) FROM progress INNER JOIN runs
             ON progress.runid = runs.id AND runs.plannerid=%s
             AND progress.%s IS NOT NULL""" \
@@ -411,12 +418,22 @@ each planner."""
             times = np.array(timeTable[0][:fewestSamples])
             dataArrays = np.array([data[:fewestSamples] for data in dataTable])
             filteredData = ma.masked_array(dataArrays, np.equal(dataArrays, None), dtype=float)
+            
+            if meanCovarianceAnalysis:
+                means = np.mean(filteredData, axis=0)
+                stddevs = 2*np.std(filteredData, axis=0, ddof=1)
+            else:
+                means = np.percentile(filteredData, 50, axis=0)
+                p10 = np.percentile(filteredData, 10, axis=0)-means
+                p90 = np.percentile(filteredData, 90, axis=0)-means
+                stddevs = np.vstack((-p10, p90));
+                stddevs[np.isnan(stddevs)] = 0
 
-            means = np.mean(filteredData, axis=0)
-            stddevs = np.std(filteredData, axis=0, ddof=1)
+            #import code
+            #code.interact(local=locals())
 
             # plot average with error bars
-            plt.errorbar(times, means, yerr=2*stddevs, errorevery=max(1, len(times) // 20))
+            plt.errorbar(times, means, yerr=stddevs, errorevery=max(1, len(times) // 20))
             ax.legend(plannerNames)
     if len(plannerNames)>0:
         plt.show()
@@ -445,7 +462,9 @@ def plotStatistics(dbname, fname):
     c.execute('PRAGMA table_info(progress)')
     colInfo = c.fetchall()[2:]
     for col in colInfo:
-        plotProgressAttribute(c, planners, col[1])
+        plotProgressAttribute(c, planners, col[1], True)
+        pp.savefig(plt.gcf())
+        plotProgressAttribute(c, planners, col[1], False)
         pp.savefig(plt.gcf())
     plt.clf()
 
@@ -457,12 +476,12 @@ def plotStatistics(dbname, fname):
         c.execute("""SELECT count(*) FROM runs WHERE runs.experimentid = %d
             GROUP BY runs.plannerid""" % experiment[0])
         numRuns = [run[0] for run in c.fetchall()]
-        numRuns = numRuns[0] if len(set(numRuns)) == 1 else ','.join(numRuns)
+        #numRuns = numRuns[0] if len(set(numRuns)) == 1 else ','.join(numRuns)
 
-        plt.figtext(pagex, pagey, 'Experiment "%s"' % experiment[1])
-        plt.figtext(pagex, pagey-0.05, 'Number of averaged runs: %d' % numRuns)
-        plt.figtext(pagex, pagey-0.10, "Time limit per run: %g seconds" % experiment[2])
-        plt.figtext(pagex, pagey-0.15, "Memory limit per run: %g MB" % experiment[3])
+        #plt.figtext(pagex, pagey, 'Experiment "%s"' % experiment[1])
+        #plt.figtext(pagex, pagey-0.05, 'Number of averaged runs: %d' % numRuns)
+        #plt.figtext(pagex, pagey-0.10, "Time limit per run: %g seconds" % experiment[2])
+        #plt.figtext(pagex, pagey-0.15, "Memory limit per run: %g MB" % experiment[3])
 
     plt.show()
     pp.savefig(plt.gcf())

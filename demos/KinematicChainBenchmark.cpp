@@ -36,8 +36,12 @@
 
 #include <ompl/base/spaces/SO2StateSpace.h>
 #include <ompl/geometric/planners/rrt/RRT.h>
+#include <ompl/geometric/planners/rrt/DRRT.h>
+#include <ompl/geometric/planners/rrt/RRTsharp.h>
+#include <ompl/geometric/planners/rrt/RRTstar.h>
 #include <ompl/geometric/planners/kpiece/KPIECE1.h>
 #include <ompl/geometric/planners/est/EST.h>
+#include <ompl/geometric/planners/bitstar/BITstar.h>
 #include <ompl/geometric/planners/prm/PRM.h>
 #include <ompl/geometric/planners/stride/STRIDE.h>
 #include <ompl/tools/benchmark/Benchmark.h>
@@ -169,6 +173,7 @@ protected:
     // return true iff env does *not* include a pair of intersecting segments
     bool selfIntersectionTest(const Environment& env) const
     {
+    	return true;
         for (unsigned int i = 0; i < env.size(); ++i)
             for (unsigned int j = i + 1; j < env.size(); ++j)
                 if (intersectionTest(env[i], env[j]))
@@ -178,6 +183,7 @@ protected:
     // return true iff no segment in env0 intersects any segment in env1
     bool environmentIntersectionTest(const Environment& env0, const Environment& env1) const
     {
+    	return true;
         for (const auto & i : env0)
             for (const auto & j : env1)
                 if (intersectionTest(i, j))
@@ -251,6 +257,22 @@ Environment createHornEnvironment(unsigned int d, double eps)
     envFile.close();
     return env;
 }
+inline bool exists_file (const std::string& name) {
+    std::ifstream f(name.c_str());
+    return f.good();
+}
+
+std::string uniqueName(const std::string &stem, const std::string &ext) {
+
+    std::ostringstream possibleName;
+    possibleName.clear();
+    possibleName << stem << "." << ext;
+    for (int i=1; exists_file(possibleName.str()); ++i) {
+        possibleName.str(std::string());
+        possibleName << stem << "_" << i << "_." << ext;
+    }
+    return possibleName.str();
+}
 
 
 int main(int argc, char **argv)
@@ -302,19 +324,70 @@ int main(int argc, char **argv)
     }
 
     // by default, use the Benchmark class
-    double runtime_limit = 60, memory_limit = 1024;
-    int run_count = 20;
-    ompl::tools::Benchmark::Request request(runtime_limit, memory_limit, run_count, 0.5);
+    double runtime_limit = 15, memory_limit = 1024;
+    int run_count = 5;
+    ompl::tools::Benchmark::Request request(runtime_limit, memory_limit, run_count, 0.1);
     ompl::tools::Benchmark b(ss, "KinematicChain");
     b.addExperimentParameter("num_links", "INTEGER", std::to_string(numLinks));
 
-    b.addPlanner(std::make_shared<ompl::geometric::STRIDE>(ss.getSpaceInformation()));
-    b.addPlanner(std::make_shared<ompl::geometric::EST>(ss.getSpaceInformation()));
-    b.addPlanner(std::make_shared<ompl::geometric::KPIECE1>(ss.getSpaceInformation()));
-    b.addPlanner(std::make_shared<ompl::geometric::RRT>(ss.getSpaceInformation()));
-    b.addPlanner(std::make_shared<ompl::geometric::PRM>(ss.getSpaceInformation()));
+//    b.addPlanner(std::make_shared<ompl::geometric::STRIDE>(ss.getSpaceInformation()));
+//    b.addPlanner(std::make_shared<ompl::geometric::EST>(ss.getSpaceInformation()));
+//    b.addPlanner(std::make_shared<ompl::geometric::KPIECE1>(ss.getSpaceInformation()));
+//    b.addPlanner(std::make_shared<ompl::geometric::RRT>(ss.getSpaceInformation()));
+//    b.addPlanner(std::make_shared<ompl::geometric::PRM>(ss.getSpaceInformation()));
+
+    double range = 0.25;
+	auto rrtstar(std::make_shared<ompl::geometric::RRTstar>(ss.getSpaceInformation()));
+	rrtstar->setName("RRT*");
+	rrtstar->setDelayCC(false);
+	rrtstar->setFocusSearch(false);
+	rrtstar->setRange(range);
+//	rrtstar->setKNearest(knn);
+	b.addPlanner(rrtstar);
+	auto rrtsh(std::make_shared<ompl::geometric::RRTsharp>(ss.getSpaceInformation()));
+	rrtsh->setRange(range);
+//	rrtsh->setKNearest(knn);
+	b.addPlanner(rrtsh);
+	auto drrttdo(std::make_shared<ompl::geometric::DRRT>(ss.getSpaceInformation()));
+	drrttdo->setName("DRRT_DO");
+	drrttdo->setRange(range);
+	drrttdo->setVariant(ompl::geometric::DRRT::Variant::TREE);
+	drrttdo->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(true);
+//	drrttdo->setKNearest(knn);
+	b.addPlanner(drrttdo);
+	auto drrtt(std::make_shared<ompl::geometric::DRRT>(ss.getSpaceInformation()));
+	drrtt->setName("DRRT");
+	drrtt->setRange(range);
+	drrtt->setVariant(ompl::geometric::DRRT::Variant::TREE);
+	drrtt->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(false);
+//	drrtt->setKNearest(knn);
+	b.addPlanner(drrtt);
+    auto drrttsn(std::make_shared<ompl::geometric::DRRT>(ss.getSpaceInformation()));
+    drrttsn->setName("DRRT_SN_DO");
+    drrttsn->setRange(range);
+    drrttsn->setVariant(ompl::geometric::DRRT::Variant::TREE);
+//    drrttsn->setKNearest(knn);
+    drrttsn->setSingleNodeUpdate(true);
+    b.addPlanner(drrttsn);
+    auto drrttsn2(std::make_shared<ompl::geometric::DRRT>(ss.getSpaceInformation()));
+    drrttsn2->setName("DRRT_SN");
+    drrttsn2->setRange(range);
+    drrttsn2->setVariant(ompl::geometric::DRRT::Variant::TREE);
+//    drrttsn2->setKNearest(knn);
+    drrttsn2->setSingleNodeUpdate(true);
+    drrttsn2->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(false);
+    b.addPlanner(drrttsn2);
+    auto bitstar(std::make_shared<ompl::geometric::BITstar>(ss.getSpaceInformation()));
+//    bitstar->setName("DRRT_SN");
+//    bitstar->setRange(range);
+//    bitstar->setVariant(ompl::geometric::DRRT::Variant::TREE);
+//    drrttsn2->setKNearest(knn);
+//    bitstar->setSingleNodeUpdate(true);
+//    bitstar->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(false);
+    b.addPlanner(bitstar);
     b.benchmark(request);
-    b.saveResultsToFile(boost::str(boost::format("kinematic_%i.log") % numLinks).c_str());
+//    b.saveResultsToFile(boost::str(boost::format("kinematic_%i.log") % numLinks).c_str());
+	b.saveResultsToFile(uniqueName("kinematic", "log").c_str());
 
     exit(0);
 }

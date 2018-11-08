@@ -184,6 +184,16 @@ namespace ompl
                 return static_cast<int>(variant_);
             }
 
+            void setSingleNodeUpdate(bool a)
+            {
+            	singleNodeUpdate_ = a;
+            }
+
+            bool getSingleNodeUpdate() const
+            {
+            	return singleNodeUpdate_;
+            }
+
 			/** \brief Set the frequency of the deformation (BRANCH and TREE variants) */
             void setDeformationFrequency(double f)
             {
@@ -488,6 +498,8 @@ namespace ompl
 
             /** \brief Variant used by the algorithm */
             Variant                                         variant_;
+
+            bool singleNodeUpdate_;
 
             /** \brief Frequency of the deformation of the tree */
             double                                          deformationFrequency_;

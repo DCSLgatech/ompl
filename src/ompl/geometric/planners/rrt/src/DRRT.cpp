@@ -60,17 +60,18 @@ ompl::geometric::DRRT::DRRT(const base::SpaceInformationPtr &si)
   , iterations_(0u)
   , mc_(opt_, pdef_)
   , q_(mc_)
-  , epsilonCost_(0.0)
+  , epsilonCost_(0.01)
   , variant_(BRANCH)
+  , singleNodeUpdate_(false)
   , deformationFrequency_(1.0)
-  , delayOptimizationUntilSolution_(false)
-  , rejectionVariant_(0)
+  , delayOptimizationUntilSolution_(true)
+  , rejectionVariant_(1)
   , alpha_(1.0)
   , useInformedSampling_(false)
   , useRejectionSampling_(false)
   , numSampleAttempts_(100u)
   , gradientDelta_(0.1)
-  , maxNumItGradientDescent_(20)
+  , maxNumItGradientDescent_(100)
 {
     specs_.approximateSolutions = true;
     specs_.optimizingPaths = true;
@@ -85,6 +86,7 @@ ompl::geometric::DRRT::DRRT(const base::SpaceInformationPtr &si)
     Planner::declareParam<bool>("use_k_nearest", this, &DRRT::setKNearest, &DRRT::getKNearest, "0,1");
     Planner::declareParam<bool>("delay_optimization_until_solution", this, &DRRT::setDelayOptimizationUntilSolution, &DRRT::getDelayOptimizationUntilSolution, "0,1");
     Planner::declareParam<int>("variant", this, &DRRT::setVariantInd, &DRRT::getVariantInd, "0,1,2");
+    Planner::declareParam<bool>("single_node_update", this, &DRRT::setSingleNodeUpdate, &DRRT::getSingleNodeUpdate, "0,1");
     Planner::declareParam<double>("deformation_frequency", this, &DRRT::setDeformationFrequency, &DRRT::getDeformationFrequency, "0.:.05:1.");
     Planner::declareParam<int>("rejection_variant", this, &DRRT::setRejectionVariant, &DRRT::getRejectionVariant, "0:3");
     Planner::declareParam<double>("rejection_alpha", this, &DRRT::setAlpha, &DRRT::getAlpha, "0.:1.");
@@ -586,27 +588,31 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
     bool optim=true;
     Motion *xi,*xim,*xip,*nb;
     ompl::base::ScopedState<> Xi(si_->getStateSpace());
+    ompl::base::ScopedState<> temp(si_->getStateSpace());
     std::vector<double> grad1,grad2;
-    double delta=gradientDelta_/0.9; //TODO make parameter or do line search to minize cost along gradient
+    double delta=gradientDelta_; //TODO make parameter or do line search to minize cost along gradient
     std::vector<Motion*> branch;//branch with extremities
     xi=x;
     unsigned int lit=0;
     //Create branch
-    while(xi!=nullptr){
+    unsigned int branchCount = 0;
+    while(xi!=nullptr && !(singleNodeUpdate_ && branchCount > 2)){
         branch.insert(branch.begin(),xi);
-        xi=xi->parent;                   
+        xi=xi->parent;
+        branchCount++;
     }
     std::vector<bool> deleted(branch.size(),false);
     std::vector<bool> cantmove(branch.size(),false);
     std::vector<ompl::base::ScopedState<> > prevStates(branch.size(),Xi); //TODO maybe? keep vectors as class filds to prevent reallocating memory
     //optimize branch
     while(optim && lit<maxNumItGradientDescent_){//TODO make max it parameter or termination condition parameter
-	delta*=0.9;
+//	delta*=0.9;
         ++lit;
         optim=false;
         for(unsigned int bi=1;bi<branch.size()-1;++bi){
             if(cantmove[bi])
                 continue;
+            bool moved = false;
             xi=branch[bi];
             xim=branch[bi-1];
             xip=branch[bi+1];
@@ -629,7 +635,7 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
                     }
                 }
             }
-	    if(true){ //////////////////////////////IMPLEMENTATION IN PROGRESS
+	    if(false){ //////////////////////////////IMPLEMENTATION IN PROGRESS
 		    //bactracking line search
 		    // https://www.cs.cmu.edu/~ggordon/10725-F12/scribes/10725_Lecture5.pdf
 		    double currentCost=0;
@@ -675,11 +681,27 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
 		                Xi[i]=Xi_temp[i];
 		            }
 		    }	    
+            moved = true;
 	    }else{
-                    for(unsigned int i=0;i<grad1.size();++i){
-                        Xi[i]-=delta*grad1[i];
-                    }
+					for(unsigned int i=0;i<grad1.size();++i){
+						temp[i]=Xi[i] - delta*grad1[i];
+					}
+					si_->enforceBounds(temp.get());
+					if( opt_->isCostBetterThan(
+									opt_->combineCosts(opt_->motionCost(xim->state, temp.get()), opt_->motionCost(temp.get(), xip->state)),
+									opt_->combineCosts(opt_->motionCost(xim->state, Xi.get()), opt_->motionCost(Xi.get(), xip->state))
+											))
+	    	        {
+	    	            for(unsigned int i=0;i<grad1.size();++i){
+	    	            	Xi[i]=temp[i];
+	    	    		}
+	    	            moved = true;
+	    	        }else{
+	    	        	delta *= 0.9;
+	    	        }
 	    }
+	    /* TODO only check motion if changes done */
+	    if(moved){
             //check feasiblity
             if(!si_->checkMotion(xim->state, Xi.get())){
                 cantmove[bi]=true;
@@ -700,7 +722,11 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
                 deleted[bi]=true;
             }
             si_->copyState(xi->state,Xi.get());
+	    }
+	    if(delta>1e-5)
+	    {
             optim=true;
+	    }
         }
     }
     //Add branch back in nn
