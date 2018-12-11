@@ -431,7 +431,7 @@ namespace ompl
                 	{
                 		return 1u;
                 	}
-                	unsigned int out = 0u;
+                	unsigned int out = 1u; /* current node is counted as a descendant */
                 	for(auto *c : children){
                 		out += c->getNbDescendants(depth+1u, maxDepth);
                 	}

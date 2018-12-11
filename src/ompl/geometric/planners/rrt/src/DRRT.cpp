@@ -598,6 +598,7 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
     ompl::base::ScopedState<> Xi(si_->getStateSpace());
     ompl::base::ScopedState<> temp(si_->getStateSpace());
     std::vector<double> grad1,grad2;
+    std::vector<double> gradTemp(si_->getStateDimension(), 0.0);
     double delta=gradientDelta_; //TODO make parameter or do line search to minize cost along gradient
     std::vector<Motion*> branch;//branch with extremities
     xi=x;
@@ -639,21 +640,30 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
             /***** Compute gradient ******/
             //calculate Xi new position
             grad1=opt_->gradientwrts2(xim->state,xi->state);
-            if(variant_!=TREE){
+            if(variant_!=TREE || ((gdFlags_ & GD_APPROX_BRANCH) == GD_APPROX_BRANCH)){
                 grad2=opt_->gradientwrts1(xi->state,xip->state);
                 for(unsigned int i=0;i<grad1.size();++i){
                     grad1[i]+=grad2[i];
                 }
             }else{
+            	unsigned int parentWeight = 1u;
+            	unsigned int cWeight;
 				for(unsigned int i=0;i<grad1.size();++i){
-					grad1[i]*=(xi->children.size());//+1?
+//					grad1[i]*=(xi->children.size());//+1?
+					gradTemp[i] = 0.0;
 				}
                 for(unsigned int ic=0;ic<xi->children.size();++ic){
                     grad2=opt_->gradientwrts1(xi->state,xi->children[ic]->state);
-                    for(unsigned int i=0;i<grad1.size();++i){
-                        grad1[i]+=grad2[i];
+                    cWeight = xi->children[ic]->getNbDescendants(0u, gdNdescendantApprox_);
+                    for(unsigned int i=0;i<gradTemp.size();++i){
+                        gradTemp[i] += cWeight*grad2[i];
                     }
+                    parentWeight += cWeight;
                 }
+				for(unsigned int i=0;i<grad1.size();++i){
+					grad1[i] = parentWeight*grad1[i] + gradTemp[i];
+				}
+
             }
             /***** END compute gradient *****/
 			if(false){ //////////////////////////////IMPLEMENTATION IN PROGRESS
