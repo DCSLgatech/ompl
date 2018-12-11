@@ -72,6 +72,9 @@ ompl::geometric::DRRT::DRRT(const base::SpaceInformationPtr &si)
   , numSampleAttempts_(100u)
   , gradientDelta_(0.1)
   , maxNumItGradientDescent_(100)
+  , gdFlags_(0u)
+  , gdNdepth_(100000u)
+  , gdNdescendantApprox_(100000u)
 {
     specs_.approximateSolutions = true;
     specs_.optimizingPaths = true;
@@ -99,6 +102,11 @@ ompl::geometric::DRRT::DRRT(const base::SpaceInformationPtr &si)
                                 &DRRT::getSampleRejection, "0,1");
     Planner::declareParam<bool>("number_sampling_attempts", this, &DRRT::setNumSamplingAttempts,
                                 &DRRT::getNumSamplingAttempts, "10:10:100000");
+
+    Planner::declareParam<unsigned int>("gradient_descent_flags", this, &DRRT::setGDFlags, &DRRT::getGDFlags, "0:1000");
+    Planner::declareParam<unsigned int>("gradient_descent_max_depth", this, &DRRT::setGDMaxDepth, &DRRT::getGDMaxDepth, "0:1000");
+    Planner::declareParam<unsigned int>("gradient_descent_descendant_approx_depth", this, &DRRT::setGDMaxDepthDescendantApprox, &DRRT::getGDMaxDepthDescendantApprox, "0:1000");
+
 
     addPlannerProgressProperty("iterations INTEGER", [this] { return numIterationsProperty(); });
     addPlannerProgressProperty("motions INTEGER", [this] { return numMotionsProperty(); });
@@ -377,10 +385,10 @@ ompl::base::PlannerStatus ompl::geometric::DRRT::solve(const base::PlannerTermin
                 }
             }
 
-            if( motion->parent!=nullptr && motion->parent->parent!=nullptr &&
-                ( (variant_==BRANCH || variant_==TREE) && rng_.uniform01() < deformationFrequency_ && 
-                  (  !delayOptimizationUntilSolution_ || opt_->isFinite(bestCost_) || 
-                  goal->isSatisfied(motion->state, &distanceFromGoal) ) ) ){ //always minimize if the goal is reached
+            if( motion->parent!=nullptr && motion->parent->parent!=nullptr && checkApplyGradientDescent(motion)){
+//                ( (variant_==BRANCH || variant_==TREE) && rng_.uniform01() < deformationFrequency_ &&
+//                  (  !delayOptimizationUntilSolution_ || opt_->isFinite(bestCost_) ||
+//                  goal->isSatisfied(motion->state, &distanceFromGoal) ) ) ){ //always minimize if the goal is reached
                     gradientDescent(motion);
             }else{
 			    updateQueue(motion);
@@ -596,13 +604,24 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
     unsigned int lit=0;
     //Create branch
     unsigned int branchCount = 0;
-    while(xi!=nullptr && !(singleNodeUpdate_ && branchCount > 2)){
+    while(xi!=nullptr && !((singleNodeUpdate_ || ((gdFlags_ & GD_MAX_N_DEPTH) == GD_MAX_N_DEPTH)) && branchCount > gdNdepth_+1)){
         branch.insert(branch.begin(),xi);
         xi=xi->parent;
         branchCount++;
     }
     std::vector<bool> deleted(branch.size(),false);
     std::vector<bool> cantmove(branch.size(),false);
+    if((gdFlags_ & GD_MAX_N_GD) == GD_MAX_N_GD){
+		for(unsigned int bi=1;bi<branch.size()-1;++bi){
+			xi=branch[bi];
+			if(xi->nbGD > 10u)
+			{
+				cantmove[bi] = true;
+			}else{
+				xi->nbGD++;
+			}
+		}
+    }
     std::vector<ompl::base::ScopedState<> > prevStates(branch.size(),Xi); //TODO maybe? keep vectors as class filds to prevent reallocating memory
     //optimize branch
     while(optim && lit<maxNumItGradientDescent_){//TODO make max it parameter or termination condition parameter
@@ -617,6 +636,7 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
             xim=branch[bi-1];
             xip=branch[bi+1];
             Xi=xi->state;
+            /***** Compute gradient ******/
             //calculate Xi new position
             grad1=opt_->gradientwrts2(xim->state,xi->state);
             if(variant_!=TREE){
@@ -625,9 +645,9 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
                     grad1[i]+=grad2[i];
                 }
             }else{
-		for(unsigned int i=0;i<grad1.size();++i){
-			grad1[i]*=(xi->children.size());//+1?
-		}
+				for(unsigned int i=0;i<grad1.size();++i){
+					grad1[i]*=(xi->children.size());//+1?
+				}
                 for(unsigned int ic=0;ic<xi->children.size();++ic){
                     grad2=opt_->gradientwrts1(xi->state,xi->children[ic]->state);
                     for(unsigned int i=0;i<grad1.size();++i){
@@ -635,98 +655,99 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
                     }
                 }
             }
-	    if(false){ //////////////////////////////IMPLEMENTATION IN PROGRESS
-		    //bactracking line search
-		    // https://www.cs.cmu.edu/~ggordon/10725-F12/scribes/10725_Lecture5.pdf
-		    double currentCost=0;
-		    double gradientNorm2=0;
-		    double cost=0;
-		    double t=1;
-		    double beta=0.8;
-		    ompl::base::ScopedState<> Xi_temp(si_->getStateSpace());
-                    for(unsigned int i=0;i<grad1.size();++i){
-                        Xi_temp[i]=Xi[i]-t*grad1[i];
-			gradientNorm2+=grad1[i]*grad1[i];
-                    }
-		    if(variant_!=TREE){
-			currentCost=opt_->motionCost(branch[bi-1]->state, branch[bi]->state).value() + opt_->motionCost(branch[bi]->state, branch[bi+1]->state).value();
-			cost=opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value() + opt_->motionCost(Xi_temp.get(), branch[bi+1]->state).value();
-		    }else{
-			currentCost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, branch[bi]->state).value();
-			cost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value();
-			for(unsigned int ic=0;ic<xi->children.size();++ic){
-				currentCost+=opt_->motionCost(branch[bi]->state, xi->children[ic]->state).value();
-				cost+=opt_->motionCost(Xi_temp.get(), xi->children[ic]->state).value();
-			}
-		    }
-		    while(cost>currentCost-0.5*t*gradientNorm2 && t>0.000001){
-			    t*=beta;
-		            for(unsigned int i=0;i<grad1.size();++i){
-		                Xi_temp[i]=Xi[i]-t*grad1[i];
-		            }
-			    if(variant_!=TREE){
-				cost=opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value() + opt_->motionCost(Xi_temp.get(), branch[bi+1]->state).value();
-			    }else{
-				cost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value();
-				for(unsigned int ic=0;ic<xi->children.size();++ic){
-					cost+=opt_->motionCost(Xi_temp.get(), xi->children[ic]->state).value();
+            /***** END compute gradient *****/
+			if(false){ //////////////////////////////IMPLEMENTATION IN PROGRESS
+				//bactracking line search
+				// https://www.cs.cmu.edu/~ggordon/10725-F12/scribes/10725_Lecture5.pdf
+				double currentCost=0;
+				double gradientNorm2=0;
+				double cost=0;
+				double t=1;
+				double beta=0.8;
+				ompl::base::ScopedState<> Xi_temp(si_->getStateSpace());
+				for(unsigned int i=0;i<grad1.size();++i){
+					Xi_temp[i]=Xi[i]-t*grad1[i];
+					gradientNorm2+=grad1[i]*grad1[i];
 				}
-			    }
-		    }	
-		    if(t<0.000001){
-		        cantmove[bi]=true;
-		        continue;
-		    }else{
-		            for(unsigned int i=0;i<grad1.size();++i){
-		                Xi[i]=Xi_temp[i];
-		            }
-		    }	    
-            moved = true;
-	    }else{
-					for(unsigned int i=0;i<grad1.size();++i){
-						temp[i]=Xi[i] - delta*grad1[i];
+				if(variant_!=TREE){
+					currentCost=opt_->motionCost(branch[bi-1]->state, branch[bi]->state).value() + opt_->motionCost(branch[bi]->state, branch[bi+1]->state).value();
+					cost=opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value() + opt_->motionCost(Xi_temp.get(), branch[bi+1]->state).value();
+					}else{
+					currentCost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, branch[bi]->state).value();
+					cost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value();
+					for(unsigned int ic=0;ic<xi->children.size();++ic){
+						currentCost+=opt_->motionCost(branch[bi]->state, xi->children[ic]->state).value();
+						cost+=opt_->motionCost(Xi_temp.get(), xi->children[ic]->state).value();
 					}
-					si_->enforceBounds(temp.get());
-					if( opt_->isCostBetterThan(
-									opt_->combineCosts(opt_->motionCost(xim->state, temp.get()), opt_->motionCost(temp.get(), xip->state)),
-									opt_->combineCosts(opt_->motionCost(xim->state, Xi.get()), opt_->motionCost(Xi.get(), xip->state))
-											))
-	    	        {
-	    	            for(unsigned int i=0;i<grad1.size();++i){
-	    	            	Xi[i]=temp[i];
-	    	    		}
-	    	            moved = true;
-	    	        }else{
-	    	        	delta *= 0.9;
-	    	        }
-	    }
-	    /* TODO only check motion if changes done */
-	    if(moved){
-            //check feasiblity
-            if(!si_->checkMotion(xim->state, Xi.get())){
-                cantmove[bi]=true;
-                continue;
-            }
-            for(unsigned int i=0;i<xi->children.size();++i){
-                if(!si_->checkMotion(Xi.get(),xi->children[i]->state)){
-                    cantmove[bi]=true;
-                    break;
-                }
-            }
-            if(cantmove[bi])
-                continue;
-            //update xi position and the nn datastructure
-            if(!deleted[bi]){
-                prevStates[bi]=xi->state;
-                nn_->remove(xi);
-                deleted[bi]=true;
-            }
-            si_->copyState(xi->state,Xi.get());
-	    }
-	    if(delta>1e-5)
-	    {
-            optim=true;
-	    }
+				}
+				while(cost>currentCost-0.5*t*gradientNorm2 && t>0.000001){
+					t*=beta;
+					for(unsigned int i=0;i<grad1.size();++i){
+						Xi_temp[i]=Xi[i]-t*grad1[i];
+					}
+					if(variant_!=TREE){
+						cost=opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value() + opt_->motionCost(Xi_temp.get(), branch[bi+1]->state).value();
+					}else{
+						cost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value();
+						for(unsigned int ic=0;ic<xi->children.size();++ic){
+							cost+=opt_->motionCost(Xi_temp.get(), xi->children[ic]->state).value();
+						}
+					}
+				}
+				if(t<0.000001){
+					cantmove[bi]=true;
+					continue;
+				}else{
+						for(unsigned int i=0;i<grad1.size();++i){
+							Xi[i]=Xi_temp[i];
+						}
+				}
+				moved = true;
+			}else{
+				for(unsigned int i=0;i<grad1.size();++i){
+					temp[i]=Xi[i] - delta*grad1[i];
+				}
+				si_->enforceBounds(temp.get());
+				if( opt_->isCostBetterThan(
+								opt_->combineCosts(opt_->motionCost(xim->state, temp.get()), opt_->motionCost(temp.get(), xip->state)),
+								opt_->combineCosts(opt_->motionCost(xim->state, Xi.get()), opt_->motionCost(Xi.get(), xip->state))
+										))
+				{
+					for(unsigned int i=0;i<grad1.size();++i){
+						Xi[i]=temp[i];
+					}
+					moved = true;
+				}else{
+					delta *= 0.9;
+				}
+			}
+			/* TODO only check motion if changes done */
+			if(moved){
+				//check feasiblity
+				if(!si_->checkMotion(xim->state, Xi.get())){
+					cantmove[bi]=true;
+					continue;
+				}
+				for(unsigned int i=0;i<xi->children.size();++i){
+					if(!si_->checkMotion(Xi.get(),xi->children[i]->state)){
+						cantmove[bi]=true;
+						break;
+					}
+				}
+				if(cantmove[bi])
+					continue;
+				//update xi position and the nn datastructure
+				if(!deleted[bi]){
+					prevStates[bi]=xi->state;
+					nn_->remove(xi);
+					deleted[bi]=true;
+				}
+				si_->copyState(xi->state,Xi.get());
+			}
+			if(delta>1e-5)
+			{
+				optim=true;
+			}
         }
     }
     //Add branch back in nn
@@ -1010,4 +1031,54 @@ void ompl::geometric::DRRT::calculateRewiringLowerBounds()
 
     // r_rrt > (2*(1+1/d))^(1/d)*(measure/ballvolume)^(1/d)
     r_rrt_ = rewireFactor_ * std::pow(2 * (1.0 + 1.0 / dimDbl) * (si_->getSpaceMeasure() / unitNBallMeasure(si_->getStateDimension())), 1.0 / dimDbl);
+}
+
+//#define GD_IF_SOLUTION 		(1<<0)
+//#define GD_IF_GOAL_BRANCH 	(1<<1)
+//#define GD_IF_EVERY_N 		(1<<2)
+
+bool ompl::geometric::DRRT::checkApplyGradientDescent(Motion *motion)
+{
+	bool output = true;
+	if((gdFlags_ & GD_IF_SOLUTION) == GD_IF_SOLUTION)
+	{
+		output &= opt_->isFinite(bestCost_);
+	}
+	if((gdFlags_ & GD_IF_GOAL_BRANCH) == GD_IF_GOAL_BRANCH)
+	{
+		output = false;
+        for (auto *goalMotion : goalMotions_)
+		{
+        	Motion* temp = goalMotion;
+			do
+			{
+				if(temp == motion)
+				{
+					output = true;
+					break;
+				}
+			}while((temp = temp->parent) != NULL);
+			if(output)
+			{
+				break;
+			}
+		}
+	}
+	if((gdFlags_ & GD_IF_EVERY_N) == GD_IF_EVERY_N)
+	{
+		gdN_++;
+		if(gdN_ > 10u)
+		{
+			gdN_ = 0u;
+		}
+		else
+		{
+			output = false;
+		}
+	}
+//	double distanceFromGoal;
+//	return ( (variant_==BRANCH || variant_==TREE) && rng_.uniform01() < deformationFrequency_ &&
+//	        (  !delayOptimizationUntilSolution_ || opt_->isFinite(bestCost_) ||
+//	        pdef_->getGoal().get()->isSatisfied(motion->state, &distanceFromGoal) ) );
+	return output;
 }

@@ -49,6 +49,14 @@
 #include <utility>
 #include <vector>
 
+#define GD_IF_SOLUTION 			(1<<0)
+#define GD_IF_GOAL_BRANCH 		(1<<1)
+#define GD_IF_EVERY_N 			(1<<2)
+#define GD_MAX_N_GD 			(1<<3)
+#define GD_MAX_N_DEPTH 			(1<<4)
+#define GD_APPROX_DESCENDANT_N 	(1<<5)
+#define GD_APPROX_BRANCH	 	(1<<6)
+
 namespace ompl
 {
     namespace geometric
@@ -304,6 +312,36 @@ namespace ompl
                 return gradientDelta_;
             }
 
+            void setGDFlags(const unsigned int newFlags)
+            {
+            	gdFlags_ = newFlags;
+            }
+
+            unsigned int getGDFlags() const
+            {
+            	return gdFlags_;
+            }
+
+			void setGDMaxDepth(const unsigned int a)
+            {
+				gdNdepth_ = a;
+            }
+
+			unsigned int getGDMaxDepth() const
+			{
+				return gdNdepth_;
+			}
+
+			void setGDMaxDepthDescendantApprox(const unsigned int a)
+            {
+				gdNdescendantApprox_ = a;
+            }
+
+			unsigned int getGDMaxDepthDescendantApprox() const
+			{
+				return gdNdescendantApprox_;
+			}
+
             unsigned int numIterations() const
             {
                 return iterations_;
@@ -359,7 +397,7 @@ namespace ompl
             public:
                 /** \brief Constructor that allocates memory for the state. This constructor automatically allocates
                  * memory for \e state, \e cost, and \e incCost */
-                Motion(const base::SpaceInformationPtr &si) : state(si->allocState()), parent(nullptr), handle(nullptr)
+                Motion(const base::SpaceInformationPtr &si) : state(si->allocState()), parent(nullptr), handle(nullptr), nbGD(0u)
                 {
                 }
 
@@ -385,6 +423,20 @@ namespace ompl
 
                 /** \brief Handle to identify the motion in the queue */
                 BinaryHeap<Motion *, MotionCompare>::Element *handle;
+
+                unsigned int nbGD;
+
+                unsigned int getNbDescendants(unsigned int depth, unsigned int maxDepth){
+                	if(depth > maxDepth)
+                	{
+                		return 1u;
+                	}
+                	unsigned int out = 0u;
+                	for(auto *c : children){
+                		out += c->getNbDescendants(depth+1u, maxDepth);
+                	}
+                	return out;
+                }
             };
 
             /** \brief Create the samplers */
@@ -522,11 +574,16 @@ namespace ompl
             /** \brief The number of attempts to make at informed sampling */
             unsigned int numSampleAttempts_;
 
-	    /** \brief Size ot the step used for the gradient descent */
-	    double gradientDelta_;
+			/** \brief Size ot the step used for the gradient descent */
+			double gradientDelta_;
 
-	    /** \brief Maximum number of gradient descent iteration during each global iteration */
-	    unsigned int maxNumItGradientDescent_;
+			/** \brief Maximum number of gradient descent iteration during each global iteration */
+			unsigned int maxNumItGradientDescent_;
+
+			unsigned int gdFlags_;
+			unsigned int gdN_;
+			unsigned int gdNdepth_;
+			unsigned int gdNdescendantApprox_;
 
             ///////////////////////////////////////
             // Planner progress property functions
@@ -542,6 +599,8 @@ namespace ompl
             {
                 return std::to_string(nn_->size());
             }
+
+            bool checkApplyGradientDescent(Motion *motion);
         };
     }
 }
