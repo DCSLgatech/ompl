@@ -427,7 +427,7 @@ namespace ompl
                 unsigned int nbGD;
 
                 unsigned int getNbDescendants(unsigned int depth, unsigned int maxDepth){
-                	if(depth > maxDepth)
+                	if(depth >= maxDepth)
                 	{
                 		return 1u;
                 	}

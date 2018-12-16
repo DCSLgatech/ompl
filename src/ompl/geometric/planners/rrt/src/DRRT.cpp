@@ -61,10 +61,10 @@ ompl::geometric::DRRT::DRRT(const base::SpaceInformationPtr &si)
   , mc_(opt_, pdef_)
   , q_(mc_)
   , epsilonCost_(0.01)
-  , variant_(BRANCH)
+  , variant_(TREE)
   , singleNodeUpdate_(false)
   , deformationFrequency_(1.0)
-  , delayOptimizationUntilSolution_(true)
+  , delayOptimizationUntilSolution_(false)
   , rejectionVariant_(1)
   , alpha_(1.0)
   , useInformedSampling_(false)
@@ -74,7 +74,7 @@ ompl::geometric::DRRT::DRRT(const base::SpaceInformationPtr &si)
   , maxNumItGradientDescent_(100)
   , gdFlags_(0u)
   , gdNdepth_(100000u)
-  , gdNdescendantApprox_(100000u)
+  , gdNdescendantApprox_(0u)
 {
     specs_.approximateSolutions = true;
     specs_.optimizingPaths = true;
@@ -646,7 +646,7 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
                     grad1[i]+=grad2[i];
                 }
             }else{
-            	unsigned int parentWeight = 1u;
+            	unsigned int parentWeight = 0u; // 1 causes weird solution when gdNdescendantApprox_==0
             	unsigned int cWeight;
 				for(unsigned int i=0;i<grad1.size();++i){
 //					grad1[i]*=(xi->children.size());//+1?
@@ -682,7 +682,7 @@ void ompl::geometric::DRRT::gradientDescent(Motion *x){
 				if(variant_!=TREE){
 					currentCost=opt_->motionCost(branch[bi-1]->state, branch[bi]->state).value() + opt_->motionCost(branch[bi]->state, branch[bi+1]->state).value();
 					cost=opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value() + opt_->motionCost(Xi_temp.get(), branch[bi+1]->state).value();
-					}else{
+				}else{
 					currentCost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, branch[bi]->state).value();
 					cost=xi->children.size()*opt_->motionCost(branch[bi-1]->state, Xi_temp.get()).value();
 					for(unsigned int ic=0;ic<xi->children.size();++ic){

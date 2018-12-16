@@ -34,6 +34,8 @@ if (OMPL_BUILD_DEMOS)
   add_ompl_demo(demo_Diagonal Diagonal.cpp)
   add_ompl_demo(demo_gradientDescentGating gradientDescentGating.cpp)
   add_ompl_demo(demo_gradientDescentGating2 gradientDescentGating2.cpp)
+  add_ompl_demo(demo_gradientDescent_gdApprox gradientDescent_gdApprox.cpp)
+  
   add_ompl_demo(demo_TestSpace TestSpaceDemo.cpp)
   add_ompl_demo(demo_BoundedAccelVel BoundedAccelVelocityDemo.cpp)
   add_ompl_demo(demo_test2D test2D.cpp)
