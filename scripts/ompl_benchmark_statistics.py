@@ -426,8 +426,12 @@ each planner."""
                 means = np.percentile(filteredData, 50, axis=0)
                 p10 = np.percentile(filteredData, 10, axis=0)-means
                 p90 = np.percentile(filteredData, 90, axis=0)-means
+                p25 = np.percentile(filteredData, 25, axis=0)-means
+                p75 = np.percentile(filteredData, 75, axis=0)-means
                 stddevs = np.vstack((-p10, p90));
                 stddevs[np.isnan(stddevs)] = 0
+                np.savetxt(planner[1] +"_" +attribute+"_mean.csv",np.transpose(np.vstack((times, means))),header="t v", comments="", fmt="%5.5f");
+                np.savetxt(planner[1] +"_" +attribute+"_spread.csv",np.transpose(np.vstack((times, p75-p25))),header="t v", comments="", fmt="%5.5f");
 
             #import code
             #code.interact(local=locals())

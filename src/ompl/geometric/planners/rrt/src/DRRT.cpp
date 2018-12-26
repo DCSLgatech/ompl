@@ -73,7 +73,7 @@ ompl::geometric::DRRT::DRRT(const base::SpaceInformationPtr &si)
   , gradientDelta_(0.1)
   , maxNumItGradientDescent_(100)
   , gdFlags_(0u)
-  , gdNdepth_(100000u)
+  , gdNdepth_(100u)
   , gdNdescendantApprox_(0u)
 {
     specs_.approximateSolutions = true;
