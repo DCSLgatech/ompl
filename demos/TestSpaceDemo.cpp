@@ -289,7 +289,10 @@ int main(int argc, char **argv)
     drrttsn->setVariant(ompl::geometric::DRRT::Variant::TREE);
     drrttsn->setKNearest(knn);
     drrttsn->setSingleNodeUpdate(true);
-//    drrttsn->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(false);
+    drrttsn->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(true);
+    drrttsn->setGDFlags(GD_IF_EVERY_N | GD_MAX_N_DEPTH | GD_APPROX_DESCENDANT_N);
+    drrttsn->setGDMaxDepthDescendantApprox(0u);
+    drrttsn->setGDMaxDepth(2u);
     b.addPlanner(drrttsn);
 
 	b.benchmark(request);

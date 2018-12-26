@@ -1077,7 +1077,7 @@ bool ompl::geometric::DRRT::checkApplyGradientDescent(Motion *motion)
 	if((gdFlags_ & GD_IF_EVERY_N) == GD_IF_EVERY_N)
 	{
 		gdN_++;
-		if(gdN_ > 10u)
+		if(gdN_ > 3u)
 		{
 			gdN_ = 0u;
 		}

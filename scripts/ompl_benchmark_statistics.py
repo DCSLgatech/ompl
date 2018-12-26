@@ -391,8 +391,8 @@ each planner."""
     ax.set_ylabel(attribute.replace('_',' ') + " (" + analysis +")")
     plannerNames = []
     for planner in planners:
-        if planner[1] == "RRT*":
-            continue;
+        #if planner[1] == "RRT*":
+        #    continue;
         cur.execute("""SELECT count(progress.%s) FROM progress INNER JOIN runs
             ON progress.runid = runs.id AND runs.plannerid=%s
             AND progress.%s IS NOT NULL""" \
