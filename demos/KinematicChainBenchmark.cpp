@@ -173,7 +173,7 @@ protected:
     // return true iff env does *not* include a pair of intersecting segments
     bool selfIntersectionTest(const Environment& env) const
     {
-    	return true;
+//    	return true;
         for (unsigned int i = 0; i < env.size(); ++i)
             for (unsigned int j = i + 1; j < env.size(); ++j)
                 if (intersectionTest(env[i], env[j]))
@@ -183,7 +183,7 @@ protected:
     // return true iff no segment in env0 intersects any segment in env1
     bool environmentIntersectionTest(const Environment& env0, const Environment& env1) const
     {
-    	return true;
+//    	return true;
         for (const auto & i : env0)
             for (const auto & j : env1)
                 if (intersectionTest(i, j))
@@ -324,8 +324,8 @@ int main(int argc, char **argv)
     }
 
     // by default, use the Benchmark class
-    double runtime_limit = 15, memory_limit = 1024;
-    int run_count = 5;
+    double runtime_limit = 20, memory_limit = 1024;
+    int run_count = 100;
     ompl::tools::Benchmark::Request request(runtime_limit, memory_limit, run_count, 0.1);
     ompl::tools::Benchmark b(ss, "KinematicChain");
     b.addExperimentParameter("num_links", "INTEGER", std::to_string(numLinks));
@@ -337,13 +337,14 @@ int main(int argc, char **argv)
 //    b.addPlanner(std::make_shared<ompl::geometric::PRM>(ss.getSpaceInformation()));
 
     double range = 0.25;
-	auto rrtstar(std::make_shared<ompl::geometric::RRTstar>(ss.getSpaceInformation()));
-	rrtstar->setName("RRT*");
-	rrtstar->setDelayCC(false);
-	rrtstar->setFocusSearch(false);
-	rrtstar->setRange(range);
-//	rrtstar->setKNearest(knn);
-	b.addPlanner(rrtstar);
+    bool knn = true;
+//	auto rrtstar(std::make_shared<ompl::geometric::RRTstar>(ss.getSpaceInformation()));
+//	rrtstar->setName("RRT*");
+//	rrtstar->setDelayCC(false);
+//	rrtstar->setFocusSearch(false);
+//	rrtstar->setRange(range);
+////	rrtstar->setKNearest(knn);
+//	b.addPlanner(rrtstar);
 	auto rrtsh(std::make_shared<ompl::geometric::RRTsharp>(ss.getSpaceInformation()));
 	rrtsh->setRange(range);
 //	rrtsh->setKNearest(knn);
@@ -352,39 +353,51 @@ int main(int argc, char **argv)
 	drrttdo->setName("DRRT_DO");
 	drrttdo->setRange(range);
 	drrttdo->setVariant(ompl::geometric::DRRT::Variant::TREE);
-	drrttdo->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(true);
-//	drrttdo->setKNearest(knn);
+//	drrttdo->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(true);
+	drrttdo->setGDFlags(GD_MAX_N_DEPTH | GD_APPROX_DESCENDANT_N | GD_IF_SOLUTION);
+	drrttdo->setGDMaxDepthDescendantApprox(0u);
+	drrttdo->setGDMaxDepth(10u);
+	drrttdo->setKNearest(knn);
 	b.addPlanner(drrttdo);
 	auto drrtt(std::make_shared<ompl::geometric::DRRT>(ss.getSpaceInformation()));
 	drrtt->setName("DRRT");
 	drrtt->setRange(range);
 	drrtt->setVariant(ompl::geometric::DRRT::Variant::TREE);
-	drrtt->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(false);
-//	drrtt->setKNearest(knn);
+//	drrtt->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(false);
+	drrtt->setGDFlags(GD_MAX_N_DEPTH | GD_APPROX_DESCENDANT_N);
+	drrtt->setGDMaxDepthDescendantApprox(0u);
+	drrtt->setGDMaxDepth(10u);
+	drrtt->setKNearest(knn);
 	b.addPlanner(drrtt);
     auto drrttsn(std::make_shared<ompl::geometric::DRRT>(ss.getSpaceInformation()));
     drrttsn->setName("DRRT_SN_DO");
     drrttsn->setRange(range);
     drrttsn->setVariant(ompl::geometric::DRRT::Variant::TREE);
-//    drrttsn->setKNearest(knn);
-    drrttsn->setSingleNodeUpdate(true);
+    drrttsn->setKNearest(knn);
+//    drrttsn->setSingleNodeUpdate(true);
+    drrttsn->setGDFlags(GD_MAX_N_DEPTH | GD_APPROX_DESCENDANT_N | GD_IF_SOLUTION);
+    drrttsn->setGDMaxDepthDescendantApprox(0u);
+    drrttsn->setGDMaxDepth(1u);
     b.addPlanner(drrttsn);
     auto drrttsn2(std::make_shared<ompl::geometric::DRRT>(ss.getSpaceInformation()));
     drrttsn2->setName("DRRT_SN");
     drrttsn2->setRange(range);
     drrttsn2->setVariant(ompl::geometric::DRRT::Variant::TREE);
-//    drrttsn2->setKNearest(knn);
-    drrttsn2->setSingleNodeUpdate(true);
-    drrttsn2->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(false);
+    drrttsn2->setKNearest(knn);
+//    drrttsn2->setSingleNodeUpdate(true);
+    drrttsn2->setGDFlags(GD_MAX_N_DEPTH | GD_APPROX_DESCENDANT_N);
+    drrttsn2->setGDMaxDepthDescendantApprox(0u);
+    drrttsn2->setGDMaxDepth(1u);
+//    drrttsn2->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(false);
     b.addPlanner(drrttsn2);
-    auto bitstar(std::make_shared<ompl::geometric::BITstar>(ss.getSpaceInformation()));
+//    auto bitstar(std::make_shared<ompl::geometric::BITstar>(ss.getSpaceInformation()));
 //    bitstar->setName("DRRT_SN");
 //    bitstar->setRange(range);
 //    bitstar->setVariant(ompl::geometric::DRRT::Variant::TREE);
 //    drrttsn2->setKNearest(knn);
 //    bitstar->setSingleNodeUpdate(true);
 //    bitstar->as<ompl::geometric::DRRT>()->setDelayOptimizationUntilSolution(false);
-    b.addPlanner(bitstar);
+//    b.addPlanner(bitstar);
     b.benchmark(request);
 //    b.saveResultsToFile(boost::str(boost::format("kinematic_%i.log") % numLinks).c_str());
 	b.saveResultsToFile(uniqueName("kinematic", "log").c_str());

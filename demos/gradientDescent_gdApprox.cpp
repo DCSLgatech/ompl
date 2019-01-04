@@ -95,7 +95,7 @@ int main(int argc, char **argv)
 
     // by default, use the Benchmark class
     double runtime_limit = 20, memory_limit = 1024;
-    int run_count = 10;
+    int run_count = 100;
     ompl::tools::Benchmark::Request request(runtime_limit, memory_limit, run_count, 0.05, true, true, false, false);
     ompl::tools::Benchmark b(ss, "gradientDescentApprox");
 

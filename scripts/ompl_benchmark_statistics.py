@@ -316,7 +316,7 @@ def plotAttribute(cur, planners, attribute, typename):
             cur.execute('SELECT count(*) FROM runs WHERE plannerid = %s AND %s IS NULL' \
                 % (planner[0], attribute))
             nanCounts.append(cur.fetchone()[0])
-            labels.append(planner[1])
+            labels.append(planner[1].replace('drrttsn','DRRT'))
             if typename == 'ENUM':
                 scale = 100. / len(measurement)
                 measurements.append([measurement.count(i)*scale for i in range(numValues)])
